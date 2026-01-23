@@ -218,7 +218,7 @@ def main():
     parser = argparse.ArgumentParser(description="PhishHunter")
     parser.add_argument("url", help="Target URL")
     parser.add_argument("--visible", action="store_true")
-    parser.add_argument("--regions", default="US", help="Regions CSV (US,FR)")
+    parser.add_argument("--regions", default="FR", help="Regions CSV (US,FR)")
     parser.add_argument("--model", default="mistral", help="Ollama model to use")
     args = parser.parse_args()
     
