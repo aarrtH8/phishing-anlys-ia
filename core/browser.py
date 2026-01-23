@@ -180,6 +180,7 @@ class BrowserManager:
         seen_states = set() # Hash of (URL + HTML snippet)
         clicked_hashes = set() # Hash of button text/selector
         stagnation_count = 0 
+        loading_wait_count = 0 
         
         # Initial State
         await page.wait_for_load_state("networkidle")
@@ -237,10 +238,17 @@ class BrowserManager:
                 stagnation_count = 0
                 seen_states.add(state_hash)
             
+            # Check for fake loading screens
             if "vérification" in content.lower() or "checking" in content.lower() or "patientez" in content.lower():
-                logger.info("Loading screen detected. Waiting...")
-                await asyncio.sleep(4)
-                continue
+                if loading_wait_count < 3:
+                    logger.info(f"Loading screen detected (Attempt {loading_wait_count+1}/3). Waiting...")
+                    await asyncio.sleep(4)
+                    loading_wait_count += 1
+                    continue
+                else:
+                    logger.info("Loading screen persistent. Ignoring and forcing interaction.")
+            else:
+                loading_wait_count = 0
 
             # 2. AI Pattern Detection at each step
             logger.info("🤖 AI: Analyzing current page for phishing patterns...")

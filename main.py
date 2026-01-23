@@ -31,6 +31,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
     java_analyzer = JavaForensics()
     js_analyzer = JSAnalysis()
     visual_analyzer = VisualAnalysis()
+    llm = LLMAnalyzer(model="mistral") # Use Mistral for file analysis
     
     report = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -93,9 +94,18 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
                 report["files_extracted"].append({"type": "java", "url": entry["url"], "analysis": java_res})
             elif file_type == "js":
                 js_path = os.path.join("output/dump", f"{filename}.js")
-                # Save only if unique? For now overwrite is okay or distinct names
                 with open(js_path, "wb") as f: f.write(content)
+                
+                # Static Analysis
                 js_res = js_analyzer.analyze_js(content, filename)
+                
+                # AI Semantic Analysis (New)
+                try:
+                    js_text = content.decode('utf-8', errors='ignore')
+                    js_res["ai_explanation"] = llm.analyze_javascript(js_text, filename)
+                except Exception as e:
+                    js_res["ai_explanation"] = f"Error: {e}"
+
                 report["files_extracted"].append({"type": "javascript", "url": entry["url"], "analysis": js_res})
 
         # Visual
@@ -151,6 +161,10 @@ def generate_final_report(consolidated_data, llm_summary):
             
             img_name = os.path.basename(step['screenshot_path'])
             md += f"![Step {i+1}]({img_name})\n\n"
+            
+            if step.get("description", "").lower().startswith("form auto-fill"):
+                 md += "✅ **Action**: Automated data entry to bypass detection.\n\n"
+            
             md += "---\n"
     else:
         md += "_No interactive steps triggered._\n\n"
@@ -186,9 +200,13 @@ def generate_final_report(consolidated_data, llm_summary):
                 if analysis.get("obfuscation_detected"):
                     md += "> ⚠️ **Obfuscation Detected**\n"
                     md += f"> Entropy: {analysis.get('entropy_score', 0):.2f}\n"
-                    if analysis.get("deobfuscated_preview"):
-                        md += "#### Deobfuscated Preview:\n```javascript\n"
-                        md += analysis["deobfuscated_preview"][:800] + "\n...\n```\n"
+                
+                if analysis.get("ai_explanation"):
+                    md += f"> 🧠 **AI Analysis**: {analysis.get('ai_explanation')}\n"
+
+                if analysis.get("deobfuscated_preview"):
+                    md += "#### Deobfuscated Preview:\n```javascript\n"
+                    md += analysis["deobfuscated_preview"][:800] + "\n...\n```\n"
                 md += "\n"
 
     with open("output/FINAL_REPORT.md", "w", encoding="utf-8") as f:
@@ -201,7 +219,7 @@ def main():
     parser.add_argument("url", help="Target URL")
     parser.add_argument("--visible", action="store_true")
     parser.add_argument("--regions", default="US", help="Regions CSV (US,FR)")
-    parser.add_argument("--model", default="llama3", help="Ollama model to use")
+    parser.add_argument("--model", default="mistral", help="Ollama model to use")
     args = parser.parse_args()
     
     regions = args.regions.split(",")

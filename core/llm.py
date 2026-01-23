@@ -5,9 +5,33 @@ import json
 logger = logging.getLogger(__name__)
 
 class LLMAnalyzer:
-    def __init__(self, model: str = "llama3"):
+    def __init__(self, model: str = "mistral"):
         self.model = model
         self.api_url = "http://localhost:11434/api/generate"
+
+    def analyze_javascript(self, js_code: str, filename: str) -> str:
+        """Analyzes a JavaScript snippet for malicious intent."""
+        prompt = f"""
+        You are a Malware Analyst. Analyze this suspicious JavaScript file extracted from a phishing site.
+        
+        FILENAME: {filename}
+        CODE SNIPPET (First 2000 chars):
+        {js_code[:2000]}
+        
+        TASK:
+        1. Identify the purpose (e.g., obfuscation, redirection, fingerprinting, payload delivery).
+        2. Highlight any specific dangerous functions or logic.
+        3. Explain exactly what this script tries to do to the victim.
+        
+        Keep it concise (3-4 sentences).
+        """
+        try:
+            payload = {"model": self.model, "prompt": prompt, "stream": False}
+            response = requests.post(self.api_url, json=payload, timeout=40)
+            return response.json().get("response", "Analysis failed.").strip()
+        except Exception as e:
+            logger.error(f"JS Analysis failed: {e}")
+            return "Analysis unavailable."
 
     def analyze_journey_step(self, step_data: dict) -> str:
         """Analyzes a specific step in the user journey."""

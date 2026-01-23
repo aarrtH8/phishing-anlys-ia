@@ -1,180 +1,111 @@
 {
-    "target_url": "https://storage.googleapis.com/salesflow25/eranewmar.html#?Z289MSZzMT0yMjI2NDMxJnMyPTYwOTc4MDkyNSZzMz1HTEI=",
+    "target_url": "https://storage.googleapis.com/mastfox/masterxifo.html#4xlWqN70646FTvW621wykqvlobuw1133XXFRTYQVPVDZSWR102193WYWG39118I25",
     "regions": [
         {
-            "timestamp": "2026-01-22T08:30:01.361189",
-            "target_url": "https://storage.googleapis.com/salesflow25/eranewmar.html#?Z289MSZzMT0yMjI2NDMxJnMyPTYwOTc4MDkyNSZzMz1HTEI=",
+            "timestamp": "2026-01-23T13:36:08.205811",
+            "target_url": "https://storage.googleapis.com/mastfox/masterxifo.html#4xlWqN70646FTvW621wykqvlobuw1133XXFRTYQVPVDZSWR102193WYWG39118I25",
             "region": "US",
             "redirect_chain": [
                 {
-                    "url": "http://185.80.128.102/??Z289MSZzMT0yMjI2NDMxJnMyPTYwOTc4MDkyNSZzMz1HTEI=",
-                    "status": 302,
-                    "headers": {
-                        "connection": "Keep-Alive",
-                        "content-length": "0",
-                        "content-type": "text/html; charset=UTF-8",
-                        "date": "Thu, 22 Jan 2026 08:30:02 GMT",
-                        "keep-alive": "timeout=5, max=100",
-                        "location": "http://185.80.128.102/public/?:nav=default::index&go=1&s1=2226431&s2=609780925",
-                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
-                        "x-powered-by": "PHP/7.2.24"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "http://185.80.128.102/public/?:nav=default::index&go=1&s1=2226431&s2=609780925",
-                    "status": 302,
-                    "headers": {
-                        "connection": "Keep-Alive",
-                        "content-length": "0",
-                        "content-type": "text/html; charset=UTF-8",
-                        "date": "Thu, 22 Jan 2026 08:30:02 GMT",
-                        "keep-alive": "timeout=5, max=99",
-                        "location": "http://185.80.128.102/?var=Om5hdj1jbGljazo6dHJhY2tlciZkZXBsb3k9MjIyNjQzMSZ1c2VyPWR5bGFuLmRyZXZvdDElNDBnbWFpbC5jb20mZW1haWxfaWQ9NjA5NzgwOTI1JnVybD1hSFIwY0hNNkx5OTNkM2N1Y205d2JHRmxjeTVqYjIwdk1qY3lTRkpYVVVvdk4wbzFUa1pDVkRJdlAzTnZkWEpqWlY5cFpEMHlNakkyTkRNeExVRk1URjlGVEV0TlFWSmZRMEZHWDBkTlFVbE1YMFpTWDFBeUxUUTVNamc0TXlaemRXSXhQVFl3T1RjNE1Ea3lOVjgwT1RJNE9USmZNZz09",
-                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
-                        "x-powered-by": "PHP/7.2.24"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "http://185.80.128.102/?var=Om5hdj1jbGljazo6dHJhY2tlciZkZXBsb3k9MjIyNjQzMSZ1c2VyPWR5bGFuLmRyZXZvdDElNDBnbWFpbC5jb20mZW1haWxfaWQ9NjA5NzgwOTI1JnVybD1hSFIwY0hNNkx5OTNkM2N1Y205d2JHRmxjeTVqYjIwdk1qY3lTRkpYVVVvdk4wbzFUa1pDVkRJdlAzTnZkWEpqWlY5cFpEMHlNakkyTkRNeExVRk1URjlGVEV0TlFWSmZRMEZHWDBkTlFVbE1YMFpTWDFBeUxUUTVNamc0TXlaemRXSXhQVFl3T1RjNE1Ea3lOVjgwT1RJNE9USmZNZz09",
-                    "status": 302,
-                    "headers": {
-                        "connection": "Keep-Alive",
-                        "content-length": "0",
-                        "content-type": "text/html; charset=UTF-8",
-                        "date": "Thu, 22 Jan 2026 08:30:03 GMT",
-                        "keep-alive": "timeout=5, max=98",
-                        "location": "public/?:nav=click::tracker&deploy=2226431&user=dylan.drevot1%40gmail.com&email_id=609780925&url=aHR0cHM6Ly93d3cucm9wbGFlcy5jb20vMjcySFJXUUovN0o1TkZCVDIvP3NvdXJjZV9pZD0yMjI2NDMxLUFMTF9FTEtNQVJfQ0FGX0dNQUlMX0ZSX1AyLTQ5Mjg4MyZzdWIxPTYwOTc4MDkyNV80OTI4OTJfMg==",
-                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
-                        "x-powered-by": "PHP/7.2.24"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "http://185.80.128.102/public/?:nav=click::tracker&deploy=2226431&user=dylan.drevot1%40gmail.com&email_id=609780925&url=aHR0cHM6Ly93d3cucm9wbGFlcy5jb20vMjcySFJXUUovN0o1TkZCVDIvP3NvdXJjZV9pZD0yMjI2NDMxLUFMTF9FTEtNQVJfQ0FGX0dNQUlMX0ZSX1AyLTQ5Mjg4MyZzdWIxPTYwOTc4MDkyNV80OTI4OTJfMg==",
-                    "status": 302,
-                    "headers": {
-                        "connection": "Keep-Alive",
-                        "content-length": "0",
-                        "content-type": "text/html; charset=UTF-8",
-                        "date": "Thu, 22 Jan 2026 08:30:03 GMT",
-                        "keep-alive": "timeout=5, max=97",
-                        "location": "https://www.roplaes.com/272HRWQJ/7J5NFBT2/?source_id=2226431-ALL_ELKMAR_CAF_GMAIL_FR_P2-492883&sub1=609780925_492892_2",
-                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
-                        "x-powered-by": "PHP/7.2.24"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "https://www.roplaes.com/272HRWQJ/7J5NFBT2/?source_id=2226431-ALL_ELKMAR_CAF_GMAIL_FR_P2-492883&sub1=609780925_492892_2",
-                    "status": 302,
-                    "headers": {
-                        "accept-ch": "Sec-Ch-Ua-Platform-Version,Sec-Ch-Ua-Model",
-                        "alt-svc": "h3=\":443\"; ma=86400",
-                        "cf-cache-status": "DYNAMIC",
-                        "cf-ray": "9c1dafedfd274e0f-MRS",
-                        "content-type": "text/html; charset=utf-8",
-                        "date": "Thu, 22 Jan 2026 08:30:04 GMT",
-                        "location": "https://www.babosur.com/2W1Q1KK/37NKZJSM/?sub1=5b1ce6d9ee034097b022e36b903e79a1&source_id=21003&sub5=103409",
-                        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
-                        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=6OQjG8j95wERBvQALxcoqRgehKaMma8jTgWHYWkfX9%2FKUJCJXe8dKCclFtdIknLYWh6Hkk4GrtlpaaPf5jHbM8K%2FHe%2FvZnbsnX46TgF5Gw%3D%3D\"}]}",
-                        "server": "cloudflare",
-                        "vary": "Origin",
-                        "x-eflow-request-id": "d6217a6e-f312-46fc-b973-d66dee5bc682"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "https://www.babosur.com/2W1Q1KK/37NKZJSM/?sub1=5b1ce6d9ee034097b022e36b903e79a1&source_id=21003&sub5=103409",
-                    "status": 302,
-                    "headers": {
-                        "accept-ch": "Sec-Ch-Ua-Platform-Version,Sec-Ch-Ua-Model",
-                        "alt-svc": "h3=\":443\"; ma=86400",
-                        "cf-cache-status": "DYNAMIC",
-                        "cf-ray": "9c1daff1395688ed-MRS",
-                        "content-type": "text/html; charset=utf-8",
-                        "date": "Thu, 22 Jan 2026 08:30:05 GMT",
-                        "location": "https://cesarsgadgets.info/jkgW7Hpz/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
-                        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
-                        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=eOvhDGRuYhdtiDP1EZ%2Bd2FDCKG%2BWuOirtuvWyNTA%2BSFPpiCPtkA7R2h%2Fv0eXuEDfAMwVFc%2FJhc95MnLT2Epds7toRhgUVwT6fnCttNnIvA%3D%3D\"}]}",
-                        "server": "cloudflare",
-                        "vary": "Origin",
-                        "x-eflow-request-id": "07f5a7b3-8b8c-4bc5-a8ba-53bd9bebad76"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "https://cesarsgadgets.info/jkgW7Hpz/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
-                    "status": 302,
-                    "headers": {
-                        "alt-svc": "h3=\":443\"; ma=86400",
-                        "cache-control": "no-cache",
-                        "cf-cache-status": "DYNAMIC",
-                        "cf-ray": "9c1daff51dc7cd8f-MRS",
-                        "content-type": "text/html",
-                        "date": "Thu, 22 Jan 2026 08:30:05 GMT",
-                        "expires": "Thu, 22 Jan 2026 08:30:04 GMT",
-                        "location": "http://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
-                        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
-                        "permissions-policy": "interest-cohort=()",
-                        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=p6YTGTxfVce8xhHjWwfanb9F6eI%2F8MpLc3FuqT5LKL2ArZVsTpwBqqMrpuK8avGdz3GY56IepGh%2FI1pd%2FcAP8oA%2BDYm9R9lr7qO3OjVsd%2B8nGQ%3D%3D\"}]}",
-                        "server": "cloudflare",
-                        "strict-transport-security": "max-age=31536000; includeSubDomains; preload"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "http://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
-                    "status": 307,
-                    "headers": {
-                        "cross-origin-resource-policy": "Cross-Origin",
-                        "location": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
-                        "non-authoritative-reason": "HSTS"
-                    },
-                    "type": "http_redirect"
-                },
-                {
-                    "url": "https://storage.googleapis.com/salesflow25/eranewmar.html",
+                    "url": "https://storage.googleapis.com/mastfox/masterxifo.html",
                     "status": 200,
                     "type": "landing"
+                },
+                {
+                    "url": "https://www.eartrissin.com/RMrDkPvluRG2tvvd5hGmOzti5AEBU7yLOyFj82TrP-psl-n1trLvwjpwZpPKQBw9EFMw-S21CO6mVP-svOj8kQ~~/25/621-70646/1133-102193-39118",
+                    "status": 302,
+                    "headers": {
+                        "content-type": "text/html; charset=UTF-8",
+                        "date": "Fri, 23 Jan 2026 13:36:12 GMT",
+                        "location": "https://herbnetpl.com/click.php?key=dme69t4zaj0e1tgbp9cb&clickid=836915393&subid=823400",
+                        "server": "nginx/1.12.2",
+                        "transfer-encoding": "chunked"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "https://herbnetpl.com/click.php?key=dme69t4zaj0e1tgbp9cb&clickid=836915393&subid=823400",
+                    "status": 307,
+                    "headers": {
+                        "connection": "keep-alive",
+                        "content-length": "0",
+                        "date": "Fri, 23 Jan 2026 13:36:13 GMT",
+                        "location": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0 (Windows NT 10.0 Win64 x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com",
+                        "server": "openresty",
+                        "via": "1.1 Caddy",
+                        "x-request-id": "0fbc862c-8a73-4c13-a73e-2f6c608427c1"
+                    },
+                    "type": "http_redirect"
                 }
             ],
             "files_extracted": [
                 {
                     "type": "javascript",
-                    "url": "https://pushstar.work/ace-push.min.js",
+                    "url": "https://treskiva.online/vinci_autoroutes/assets//datehead.js",
                     "analysis": {
-                        "file": "ace-push.min.js",
-                        "entropy_score": 3.9604372921259596,
-                        "suspicious_functions": [],
+                        "file": "datehead.js",
+                        "entropy_score": 4.229327351940021,
+                        "suspicious_functions": [
+                            "setInterval"
+                        ],
                         "obfuscation_detected": false,
                         "hex_strings": 0,
-                        "deobfuscated_preview": null
+                        "deobfuscated_preview": null,
+                        "ai_explanation": "This JavaScript file appears to contain multiple date-related functions. The primary purpose seems to be obfuscation and potentially data manipulation.\n\n1. The `datehax()` function returns a formatted string of the current date using localized day and month names, while `datenhax()` returns the date in the format \"dd/mm/yyyy\". Both seem to be used for obfuscation purposes.\n\n2. The `startTimer(duration, display)` function uses a timer that decrements every second, which could potentially be utilized for a time-limited action or payload delivery (e.g., redirecting the victim to a malicious site after a specific time). However, this function is not called anywhere in the provided code snippet, so it's unclear if it serves any malicious purpose.\n\n3. This script tries to manipulate dates and potentially mislead victims into believing they are dealing with legitimate content. Depending on its implementation, it could be used for various malicious activities such as phishing, social engineering, or even payload delivery (via redirect)."
                     }
                 },
                 {
                     "type": "javascript",
-                    "url": "https://cesarsgadgets.info/js/setting.js",
+                    "url": "https://code.jquery.com/jquery-1.11.1.min.js",
                     "analysis": {
-                        "file": "setting.js",
-                        "entropy_score": 4.766129439515615,
+                        "file": "jquery-1.11.1.min.js",
+                        "entropy_score": 5.505727788580312,
                         "suspicious_functions": [],
                         "obfuscation_detected": true,
                         "hex_strings": 0,
-                        "deobfuscated_preview": "function datehax() {\r\n    const mydate = new Date();\r\n    mydate.setDate(mydate.getDate());\r\n    let year = mydate.getFullYear(); // Use getFullYear instead of getYear\r\n    let day = mydate.getDay();\r\n    let month = mydate.getMonth();\r\n    let daym = mydate.getDate();\r\n\r\n    if (daym < 10) {\r\n        daym = \"0\" + daym;\r\n    }\r\n\r\n    const dayarray = [\"Dimanche\", \"Lundi\", \"Mardi\", \"Mercredi\", \"Jeudi\", \"Vendredi\", \"Samedi\"];\r\n    const montharray = [\"Janvier\", \"F\u00e9vrier\", \"Mars\", \"Avril\", \"Mai\", \"Juin\", \"Juillet\", \"Ao\u00fbt\", \"Septembre\", \"Octobre\", \"Novembre\", \"D\u00e9cembre\"];\r\n\r\n    return `${montharray[month]} ${daym}, ${year}`;\r\n}\r\n\r\nfunction datenhax() {\r\n    const mydate = new Date();\r\n    mydate.setDate(mydate.getDate());\r\n    let year = mydate.getFullYear(); // Use getFullYear instead of getYear\r\n    let month = mydate.getMonth() + 1; // Months are zero-indexed\r\n    let daym = mydate.getDate();\r\n\r\n    if (month < 10) {\r\n        month = \"0\" + month; // Add leading zero for months less than 10\r\n    }\r\n\r\n    return `${daym}/${month}/${year}`;\r\n}\r\n\r\nfunction datenhay() {\r\n    const mydate = new Date();\r\n    const year = mydate.getFullYear(); // Use getFullYear instead of getYear\r\n    return year.toString();\r\n}\r\n\r\nconst states = [\r\n    document.getElementById(\"qassersaa-prgsst1\"),\r\n    document.getElementById(\"qassersaa-prgsst2\"),\r\n    document.getElementById(\"qassersaa-prgsst3\"),\r\n    document.getElementById(\"qassersaa-prgsst4\")\r\n];\r\n\r\nconst dones = [\r\n    document.getElementById(\"qassersaa-prgdnn2\"),\r\n    document.getElementById(\"qassersaa-prgdnn3\"),\r\n    document.getElementById(\"qassersaa-prgdnn4\")\r\n];\r\n\r\nconst loadImg = document.getElementById(\"qassersaa-progress-loading\");\r\nconst loadBgCol = document.getElementById(\"content-changeCol\");\r\n\r\n// Function to render loader with animations and progress updates\r\nfunction renderLoader() {\r\n    setTimeout(function() {\r\n        dones[0].style.display = \"block\";\r\n        dones[0].classList.add(\"animate__animated\", \"animate__fade"
+                        "deobfuscated_preview": "/*! jQuery v1.11.1 | (c) 2005, 2014 jQuery Foundation, Inc. | jquery.org/license */ ! function(a, b) {\n    \"object\" == typeof module && \"object\" == typeof module.exports ? module.exports = a.document ? b(a, !0) : function(a) {\n        if (!a.document) throw new Error(\"jQuery requires a window with a document\");\n        return b(a)\n    } : b(a)\n}(\"undefined\" != typeof window ? window : this, function(a, b) {\n    var c = [],\n        d = c.slice,\n        e = c.concat,\n        f = c.push,\n        g = c.indexOf,\n        h = {},\n        i = h.toString,\n        j = h.hasOwnProperty,\n        k = {},\n        l = \"1.11.1\",\n        m = function(a, b) {\n            return new m.fn.init(a, b)\n        },\n        n = /^[\\s\\uFEFF\\xA0]+|[\\s\\uFEFF\\xA0]+$/g,\n        o = /^-ms-/,\n        p = /-([\\da-z])/gi,\n        q = function(a, b) {\n            return b.toUpperCase()\n        };\n    m.fn = m.prototype = {\n        jquery: l,\n        constructor: m,\n        selector: \"\",\n        length: 0,\n        toArray: function() {\n            return d.call(this)\n        },\n        get: function(a) {\n            return null != a ? 0 > a ? this[a + this.length] : this[a] : d.call(this)\n        },\n        pushStack: function(a) {\n            var b = m.merge(this.constructor(), a);\n            return b.prevObject = this, b.context = this.context, b\n        },\n        each: function(a, b) {\n            return m.each(this, a, b)\n        },\n        map: function(a) {\n            return this.pushStack(m.map(this, function(b, c) {\n                return a.call(b, c, b)\n            }))\n        },\n        slice: function() {\n            return this.pushStack(d.apply(this, arguments))\n        },\n        first: function() {\n            return this.eq(0)\n        },\n        last: function() {\n            return this.eq(-1)\n        },\n        eq: function(a) {\n            var b = this.length,\n                c = +a + (0 > a ? b : 0);\n            return this.pushStack(c >= 0 && b > c ? [this[c]] : [])\n        },\n ",
+                        "ai_explanation": "1. The purpose of this JavaScript file is to mimic the jQuery library (version 1.11.1) as a disguise for malicious activity. It uses obfuscation techniques to conceal its true intent.\n\n2. Dangerous functions within this script include those related to manipulating the DOM (document object model), such as `each`, `map`, `first`, `last`, and `eq`. These functions can be used for various malicious activities like form grabbing, cookie theft, or redirecting users to phishing sites.\n\n3. This script, when executed on a victim's browser, attempts to interact with the webpage DOM (document object model). By manipulating the page's elements and potentially stealing sensitive data, it can contribute to a broader attack, such as identity theft or unauthorized access."
                     }
                 },
                 {
                     "type": "javascript",
-                    "url": "https://use.fontawesome.com/releases/v5.15.4/js/all.js",
+                    "url": "https://treskiva.online/vinci_autoroutes/assets//script.js",
+                    "analysis": {
+                        "file": "script.js",
+                        "entropy_score": 4.345613029331952,
+                        "suspicious_functions": [
+                            "setTimeout"
+                        ],
+                        "obfuscation_detected": false,
+                        "hex_strings": 0,
+                        "deobfuscated_preview": null,
+                        "ai_explanation": "1. This JavaScript file is designed for user interaction on a phishing site, obfuscated to hide its true purpose.\n2. The script manipulates DOM elements (e.g., `document.getElementsByClassName`, `querySelectorAll`) and adds animations using the Animate.css library for a smoother user experience. A specific dangerous function could be `toNext()`, which hides previous question sections and reveals next ones.\n3. Upon victim interaction, this script navigates through a sequence of questions on the phishing site, gradually revealing new content while hiding the previous one. The ultimate goal is to collect sensitive information from the user."
+                    }
+                },
+                {
+                    "type": "javascript",
+                    "url": "https://treskiva.online/redirect_bin_withoutcomm.js",
+                    "analysis": {
+                        "file": "redirect_bin_withoutcomm.js",
+                        "entropy_score": 4.824879566063513,
+                        "suspicious_functions": [],
+                        "obfuscation_detected": true,
+                        "hex_strings": 0,
+                        "deobfuscated_preview": "function $_GET(key) {\n    var s = decodeURIComponent(window.location.search);\n    s = s.match(new RegExp(key + '=([^&=]+)'));\n    return s ? s[1] : false;\n}\nvar dmn = $_GET('domain');\nvar redirect_url = 'https://' + dmn + '/click.php?lp=1';\nvar back_url_link = 'https://' + dmn + '/click.php?key=';\nvar\n    months = [\"January\", \"February\", \"March\", \"April\", \"May\", \"June\", \"July\", \"August\", \"September\", \"October\", \"November\", \"December\"],\n    days = [\"Sunday\", \"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\", \"Saturday\"],\n    time = [\"12:01 am\", \"2:24 pm\", \"11:55 am\", \"8:47 am\", \"6:16 pm\", \"4:16 pm\", \"6:48 pm\", \"17:07\"],\n    d = new Date(),\n    dateNow = months[d.getMonth()] + \" \" + d.getDate() + \", \" + d.getFullYear();\nif ($('.message').length) {\n    var el = $('.message');\n    el.html(el.html().replace(/To claim, simply answer a few quick questions regarding your experience with us./ig, \"For your chance to claim your reward, simply answer a few quick questions regarding your experience.\"));\n}\nif ($('.message').length) {\n    var el = $('.message');\n    el.html(el.html().replace(/You've been chosen to receive a brand new /ig, \"You\u2019ve been chosen for the chance to receive a brand new\"));\n}\nif ($('.thankyou-text_s').length) {\n    var el = $('.thankyou-text_s');\n    el.html(el.html().replace(/Please don't leave this page as we will have no choice to give another visitor a chance to choose a reward./ig, \"Please don\u2019t leave this page as products are limited.\"));\n}\nif ($('.thankyou-text_s_b').length) {\n    var el = $('.thankyou-text_s_b');\n    el.html(el.html().replace(/Please don't leave this page as we will have no choice to give another visitor a chance to choose a reward./ig, \"Please don\u2019t leave this page as products are limited.\"));\n}\nif (typeof drawloader === \"function\") {\n    const originalDrawloader = drawloader;\n    drawloader = function() {\n        const originalSetTimeout = window.setTimeout;\n        window.setTimeout = function(fn, t) {\n            return o",
+                        "ai_explanation": "This JavaScript file is designed for a variety of purposes within a phishing site, including manipulation and obfuscation of user interface elements.\n\n1. The primary purpose appears to be redirection: It extracts the domain from the URL query string (`$_GET('domain')`) and constructs a redirect URL (`redirect_url`). This is likely used to direct victims to a malicious server for further data theft or exploitation.\n2. The script also manipulates specific DOM elements, replacing certain text within messages (\"For your chance to claim your reward\" and \"You\u2019ve been chosen for the chance to receive a brand new\") and changing the thank-you text (\"Please don\u2019t leave this page as products are limited\"). This could be an attempt to make the phishing site more convincing and enticing to victims.\n3. By manipulating the user interface, setting a slower setTimeout (`window.setTimeout = function(fn, t) { return originalSetTimeout(fn, t / 2); }`) and redirecting users to malicious servers, this script attempts to deceive victims into providing sensitive information or downloading additional malware."
+                    }
+                },
+                {
+                    "type": "javascript",
+                    "url": "https://treskiva.online/vinci_autoroutes/assets//all.js",
                     "analysis": {
                         "file": "all.js",
                         "entropy_score": 5.954196310386873,
                         "suspicious_functions": [],
                         "obfuscation_detected": true,
                         "hex_strings": 0,
-                        "deobfuscated_preview": "/*!\n * Font Awesome Free 5.15.4 by @fontawesome - https://fontawesome.com\n * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)\n */\n! function() {\n    \"use strict\";\n    var c = {},\n        l = {};\n    try {\n        \"undefined\" != typeof window && (c = window), \"undefined\" != typeof document && (l = document)\n    } catch (c) {}\n    var h = (c.navigator || {}).userAgent,\n        a = void 0 === h ? \"\" : h,\n        z = c,\n        v = l,\n        m = (z.document, !!v.documentElement && !!v.head && \"function\" == typeof v.addEventListener && v.createElement, ~a.indexOf(\"MSIE\") || a.indexOf(\"Trident/\"), \"___FONT_AWESOME___\"),\n        e = function() {\n            try {\n                return !0\n            } catch (c) {\n                return !1\n            }\n        }();\n    var s = z || {};\n    s[m] || (s[m] = {}), s[m].styles || (s[m].styles = {}), s[m].hooks || (s[m].hooks = {}), s[m].shims || (s[m].shims = []);\n    var t = s[m];\n\n    function M(c, a) {\n        var l = (2 < arguments.length && void 0 !== arguments[2] ? arguments[2] : {}).skipHooks,\n            h = void 0 !== l && l,\n            z = Object.keys(a).reduce(function(c, l) {\n                var h = a[l];\n                return !!h.icon ? c[h.iconName] = h.icon : c[l] = h, c\n            }, {});\n        \"function\" != typeof t.hooks.addPack || h ? t.styles[c] = function(z) {\n            for (var c = 1; c < arguments.length; c++) {\n                var v = null != arguments[c] ? arguments[c] : {},\n                    l = Object.keys(v);\n                \"function\" == typeof Object.getOwnPropertySymbols && (l = l.concat(Object.getOwnPropertySymbols(v).filter(function(c) {\n                    return Object.getOwnPropertyDescriptor(v, c).enumerable\n                }))), l.forEach(function(c) {\n                    var l, h, a;\n                    l = z, a = v[h = c], h in l ? Object.defineProperty(l, h, {\n                        value: a,\n                        enum"
+                        "deobfuscated_preview": "/*!\n * Font Awesome Free 5.15.4 by @fontawesome - https://fontawesome.com\n * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)\n */\n! function() {\n    \"use strict\";\n    var c = {},\n        l = {};\n    try {\n        \"undefined\" != typeof window && (c = window), \"undefined\" != typeof document && (l = document)\n    } catch (c) {}\n    var h = (c.navigator || {}).userAgent,\n        a = void 0 === h ? \"\" : h,\n        z = c,\n        v = l,\n        m = (z.document, !!v.documentElement && !!v.head && \"function\" == typeof v.addEventListener && v.createElement, ~a.indexOf(\"MSIE\") || a.indexOf(\"Trident/\"), \"___FONT_AWESOME___\"),\n        e = function() {\n            try {\n                return !0\n            } catch (c) {\n                return !1\n            }\n        }();\n    var s = z || {};\n    s[m] || (s[m] = {}), s[m].styles || (s[m].styles = {}), s[m].hooks || (s[m].hooks = {}), s[m].shims || (s[m].shims = []);\n    var t = s[m];\n\n    function M(c, a) {\n        var l = (2 < arguments.length && void 0 !== arguments[2] ? arguments[2] : {}).skipHooks,\n            h = void 0 !== l && l,\n            z = Object.keys(a).reduce(function(c, l) {\n                var h = a[l];\n                return !!h.icon ? c[h.iconName] = h.icon : c[l] = h, c\n            }, {});\n        \"function\" != typeof t.hooks.addPack || h ? t.styles[c] = function(z) {\n            for (var c = 1; c < arguments.length; c++) {\n                var v = null != arguments[c] ? arguments[c] : {},\n                    l = Object.keys(v);\n                \"function\" == typeof Object.getOwnPropertySymbols && (l = l.concat(Object.getOwnPropertySymbols(v).filter(function(c) {\n                    return Object.getOwnPropertyDescriptor(v, c).enumerable\n                }))), l.forEach(function(c) {\n                    var l, h, a;\n                    l = z, a = v[h = c], h in l ? Object.defineProperty(l, h, {\n                        value: a,\n                        enum",
+                        "ai_explanation": "1. The purpose of this JavaScript file is to deliver a potentially malicious payload disguised as Font Awesome Free 5.15.4 library, exploiting the trust users have in popular libraries for web development. This script uses obfuscation techniques and attempts to execute code by manipulating the browser environment.\n\n2. The function `M()` is responsible for either adding styles or hooking into Font Awesome's existing pack system. The usage of `h = void 0 === l && l` as a conditional check, which evaluates to `true` when the variable `l` is `undefined`, suggests bypassing certain checks or security measures in place.\n\n3. This script tries to infect the victim's web browser with malicious code disguised as Font Awesome library. Once executed, it could potentially alter the appearance of websites visited by the user, deliver additional malware, or harvest sensitive data for unauthorized use."
                     }
                 }
             ],
@@ -187,43 +118,43 @@
             "links": [
                 {
                     "text": "J'aime",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "R\u00e9pondre",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "J'aime",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "R\u00e9pondre",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "J'aime",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "R\u00e9pondre",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "J'aime",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "R\u00e9pondre",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "J'aime",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 },
                 {
                     "text": "R\u00e9pondre",
-                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                    "href": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 }
             ],
             "inputs": [
@@ -236,10 +167,17 @@
             "interaction_journey": [
                 {
                     "step": "step_00_initial",
-                    "description": "Initial Page Load (AI Suspicion: ?%)",
+                    "description": "Initial Page Load (AI Suspicion: 60%)",
                     "screenshot_path": "output/screenshot_US_step_00_initial.png",
                     "html_path": "output/html_US_step_00_initial.html",
-                    "url": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128"
+                    "url": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
+                },
+                {
+                    "step": "step_04_payload",
+                    "description": "[PAYLOAD DETECTED] ['Reward promises', 'Suspicious redirects or URL patterns']",
+                    "screenshot_path": "output/screenshot_US_step_04_payload.png",
+                    "html_path": "output/html_US_step_04_payload.html",
+                    "url": "https://treskiva.online/vinci_autoroutes/index.php?device_name=Unknown&browser_name=Chrome&language=en-US&city=La%20Tronche&clickid=d5pnijae7qoc739dtvag&campaign=7704&user_id=1&clickcost=0&lander=2600&time=1769175373&browser_version=120.0.0&device_model=Unknown&device_brand=Unknown&resolution=Unknown&os_name=Windows&os_version=10&country=France&country_code=FR&isp=SIMSU&ip=130.190.116.188&user_agent=Mozilla/5.0%20(Windows%20NT%2010.0%20Win64%20x64)%20AppleWebKit/537.36%20(KHTML,%20like%20Gecko)%20Chrome/120.0.0.0%20Safari/537.36&lpkey=1769140a5ed445bde6d3bf27a1a182385b65975573&target=&device=DESKTOP&country=US&ts=&trafficsource=113&domain=herbnetpl.com#"
                 }
             ]
         }
