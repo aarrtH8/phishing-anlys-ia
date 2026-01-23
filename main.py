@@ -93,6 +93,17 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
             if file_type == "java":
                 java_res = java_analyzer.analyze_jar(content, filename)
                 report["files_extracted"].append({"type": "java", "url": entry["url"], "analysis": java_res})
+                
+                # Generate Report
+                try:
+                    dump_dir = os.path.join(output_dir, "dump")
+                    os.makedirs(dump_dir, exist_ok=True)
+                    rep_path = os.path.join(dump_dir, f"{filename}_report.md")
+                    with open(rep_path, "w", encoding="utf-8") as f:
+                        f.write(f"# Java Analysis: {filename}\n\n")
+                        f.write(f"**Source**: `{entry['url']}`\n\n")
+                        f.write(f"## Metadata\n```json\n{json.dumps(java_res, indent=2)}\n```\n")
+                except Exception: pass
             elif file_type == "js":
                 dump_dir = os.path.join(output_dir, "dump")
                 os.makedirs(dump_dir, exist_ok=True)
@@ -110,6 +121,22 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
                     js_res["ai_explanation"] = f"Error: {e}"
 
                 report["files_extracted"].append({"type": "javascript", "url": entry["url"], "analysis": js_res})
+                
+                # Generate Report
+                try:
+                    rep_path = os.path.join(dump_dir, f"{filename}_report.md")
+                    with open(rep_path, "w", encoding="utf-8") as f:
+                        f.write(f"# JS Forensic Analysis: {filename}\n\n")
+                        f.write(f"**Source**: `{entry['url']}`\n")
+                        f.write(f"**Entropy**: {js_res.get('entropy_score', 0):.2f}\n")
+                        f.write(f"**Obfuscated**: {js_res.get('obfuscation_detected')}\n\n")
+                        f.write("## 🧠 AI Explanation\n")
+                        f.write(f"{js_res.get('ai_explanation', 'N/A')}\n\n")
+                        if js_res.get('deobfuscated_preview'):
+                             f.write("## Deobfuscated Preview\n```javascript\n")
+                             f.write(js_res['deobfuscated_preview'][:2000] + "\n```\n")
+                except Exception as e:
+                    logger.warning(f"Failed to write JS report for {filename}: {e}")
 
         # Visual
         screenshot = result["screenshot"]
