@@ -1,0 +1,247 @@
+{
+    "target_url": "https://storage.googleapis.com/salesflow25/eranewmar.html#?Z289MSZzMT0yMjI2NDMxJnMyPTYwOTc4MDkyNSZzMz1HTEI=",
+    "regions": [
+        {
+            "timestamp": "2026-01-22T08:30:01.361189",
+            "target_url": "https://storage.googleapis.com/salesflow25/eranewmar.html#?Z289MSZzMT0yMjI2NDMxJnMyPTYwOTc4MDkyNSZzMz1HTEI=",
+            "region": "US",
+            "redirect_chain": [
+                {
+                    "url": "http://185.80.128.102/??Z289MSZzMT0yMjI2NDMxJnMyPTYwOTc4MDkyNSZzMz1HTEI=",
+                    "status": 302,
+                    "headers": {
+                        "connection": "Keep-Alive",
+                        "content-length": "0",
+                        "content-type": "text/html; charset=UTF-8",
+                        "date": "Thu, 22 Jan 2026 08:30:02 GMT",
+                        "keep-alive": "timeout=5, max=100",
+                        "location": "http://185.80.128.102/public/?:nav=default::index&go=1&s1=2226431&s2=609780925",
+                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
+                        "x-powered-by": "PHP/7.2.24"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "http://185.80.128.102/public/?:nav=default::index&go=1&s1=2226431&s2=609780925",
+                    "status": 302,
+                    "headers": {
+                        "connection": "Keep-Alive",
+                        "content-length": "0",
+                        "content-type": "text/html; charset=UTF-8",
+                        "date": "Thu, 22 Jan 2026 08:30:02 GMT",
+                        "keep-alive": "timeout=5, max=99",
+                        "location": "http://185.80.128.102/?var=Om5hdj1jbGljazo6dHJhY2tlciZkZXBsb3k9MjIyNjQzMSZ1c2VyPWR5bGFuLmRyZXZvdDElNDBnbWFpbC5jb20mZW1haWxfaWQ9NjA5NzgwOTI1JnVybD1hSFIwY0hNNkx5OTNkM2N1Y205d2JHRmxjeTVqYjIwdk1qY3lTRkpYVVVvdk4wbzFUa1pDVkRJdlAzTnZkWEpqWlY5cFpEMHlNakkyTkRNeExVRk1URjlGVEV0TlFWSmZRMEZHWDBkTlFVbE1YMFpTWDFBeUxUUTVNamc0TXlaemRXSXhQVFl3T1RjNE1Ea3lOVjgwT1RJNE9USmZNZz09",
+                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
+                        "x-powered-by": "PHP/7.2.24"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "http://185.80.128.102/?var=Om5hdj1jbGljazo6dHJhY2tlciZkZXBsb3k9MjIyNjQzMSZ1c2VyPWR5bGFuLmRyZXZvdDElNDBnbWFpbC5jb20mZW1haWxfaWQ9NjA5NzgwOTI1JnVybD1hSFIwY0hNNkx5OTNkM2N1Y205d2JHRmxjeTVqYjIwdk1qY3lTRkpYVVVvdk4wbzFUa1pDVkRJdlAzTnZkWEpqWlY5cFpEMHlNakkyTkRNeExVRk1URjlGVEV0TlFWSmZRMEZHWDBkTlFVbE1YMFpTWDFBeUxUUTVNamc0TXlaemRXSXhQVFl3T1RjNE1Ea3lOVjgwT1RJNE9USmZNZz09",
+                    "status": 302,
+                    "headers": {
+                        "connection": "Keep-Alive",
+                        "content-length": "0",
+                        "content-type": "text/html; charset=UTF-8",
+                        "date": "Thu, 22 Jan 2026 08:30:03 GMT",
+                        "keep-alive": "timeout=5, max=98",
+                        "location": "public/?:nav=click::tracker&deploy=2226431&user=dylan.drevot1%40gmail.com&email_id=609780925&url=aHR0cHM6Ly93d3cucm9wbGFlcy5jb20vMjcySFJXUUovN0o1TkZCVDIvP3NvdXJjZV9pZD0yMjI2NDMxLUFMTF9FTEtNQVJfQ0FGX0dNQUlMX0ZSX1AyLTQ5Mjg4MyZzdWIxPTYwOTc4MDkyNV80OTI4OTJfMg==",
+                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
+                        "x-powered-by": "PHP/7.2.24"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "http://185.80.128.102/public/?:nav=click::tracker&deploy=2226431&user=dylan.drevot1%40gmail.com&email_id=609780925&url=aHR0cHM6Ly93d3cucm9wbGFlcy5jb20vMjcySFJXUUovN0o1TkZCVDIvP3NvdXJjZV9pZD0yMjI2NDMxLUFMTF9FTEtNQVJfQ0FGX0dNQUlMX0ZSX1AyLTQ5Mjg4MyZzdWIxPTYwOTc4MDkyNV80OTI4OTJfMg==",
+                    "status": 302,
+                    "headers": {
+                        "connection": "Keep-Alive",
+                        "content-length": "0",
+                        "content-type": "text/html; charset=UTF-8",
+                        "date": "Thu, 22 Jan 2026 08:30:03 GMT",
+                        "keep-alive": "timeout=5, max=97",
+                        "location": "https://www.roplaes.com/272HRWQJ/7J5NFBT2/?source_id=2226431-ALL_ELKMAR_CAF_GMAIL_FR_P2-492883&sub1=609780925_492892_2",
+                        "server": "Apache/2.4.37 (AlmaLinux) OpenSSL/1.1.1k",
+                        "x-powered-by": "PHP/7.2.24"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "https://www.roplaes.com/272HRWQJ/7J5NFBT2/?source_id=2226431-ALL_ELKMAR_CAF_GMAIL_FR_P2-492883&sub1=609780925_492892_2",
+                    "status": 302,
+                    "headers": {
+                        "accept-ch": "Sec-Ch-Ua-Platform-Version,Sec-Ch-Ua-Model",
+                        "alt-svc": "h3=\":443\"; ma=86400",
+                        "cf-cache-status": "DYNAMIC",
+                        "cf-ray": "9c1dafedfd274e0f-MRS",
+                        "content-type": "text/html; charset=utf-8",
+                        "date": "Thu, 22 Jan 2026 08:30:04 GMT",
+                        "location": "https://www.babosur.com/2W1Q1KK/37NKZJSM/?sub1=5b1ce6d9ee034097b022e36b903e79a1&source_id=21003&sub5=103409",
+                        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+                        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=6OQjG8j95wERBvQALxcoqRgehKaMma8jTgWHYWkfX9%2FKUJCJXe8dKCclFtdIknLYWh6Hkk4GrtlpaaPf5jHbM8K%2FHe%2FvZnbsnX46TgF5Gw%3D%3D\"}]}",
+                        "server": "cloudflare",
+                        "vary": "Origin",
+                        "x-eflow-request-id": "d6217a6e-f312-46fc-b973-d66dee5bc682"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "https://www.babosur.com/2W1Q1KK/37NKZJSM/?sub1=5b1ce6d9ee034097b022e36b903e79a1&source_id=21003&sub5=103409",
+                    "status": 302,
+                    "headers": {
+                        "accept-ch": "Sec-Ch-Ua-Platform-Version,Sec-Ch-Ua-Model",
+                        "alt-svc": "h3=\":443\"; ma=86400",
+                        "cf-cache-status": "DYNAMIC",
+                        "cf-ray": "9c1daff1395688ed-MRS",
+                        "content-type": "text/html; charset=utf-8",
+                        "date": "Thu, 22 Jan 2026 08:30:05 GMT",
+                        "location": "https://cesarsgadgets.info/jkgW7Hpz/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
+                        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+                        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=eOvhDGRuYhdtiDP1EZ%2Bd2FDCKG%2BWuOirtuvWyNTA%2BSFPpiCPtkA7R2h%2Fv0eXuEDfAMwVFc%2FJhc95MnLT2Epds7toRhgUVwT6fnCttNnIvA%3D%3D\"}]}",
+                        "server": "cloudflare",
+                        "vary": "Origin",
+                        "x-eflow-request-id": "07f5a7b3-8b8c-4bc5-a8ba-53bd9bebad76"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "https://cesarsgadgets.info/jkgW7Hpz/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
+                    "status": 302,
+                    "headers": {
+                        "alt-svc": "h3=\":443\"; ma=86400",
+                        "cache-control": "no-cache",
+                        "cf-cache-status": "DYNAMIC",
+                        "cf-ray": "9c1daff51dc7cd8f-MRS",
+                        "content-type": "text/html",
+                        "date": "Thu, 22 Jan 2026 08:30:05 GMT",
+                        "expires": "Thu, 22 Jan 2026 08:30:04 GMT",
+                        "location": "http://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
+                        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+                        "permissions-policy": "interest-cohort=()",
+                        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=p6YTGTxfVce8xhHjWwfanb9F6eI%2F8MpLc3FuqT5LKL2ArZVsTpwBqqMrpuK8avGdz3GY56IepGh%2FI1pd%2FcAP8oA%2BDYm9R9lr7qO3OjVsd%2B8nGQ%3D%3D\"}]}",
+                        "server": "cloudflare",
+                        "strict-transport-security": "max-age=31536000; includeSubDomains; preload"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "http://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
+                    "status": 307,
+                    "headers": {
+                        "cross-origin-resource-policy": "Cross-Origin",
+                        "location": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128",
+                        "non-authoritative-reason": "HSTS"
+                    },
+                    "type": "http_redirect"
+                },
+                {
+                    "url": "https://storage.googleapis.com/salesflow25/eranewmar.html",
+                    "status": 200,
+                    "type": "landing"
+                }
+            ],
+            "files_extracted": [
+                {
+                    "type": "javascript",
+                    "url": "https://pushstar.work/ace-push.min.js",
+                    "analysis": {
+                        "file": "ace-push.min.js",
+                        "entropy_score": 3.9604372921259596,
+                        "suspicious_functions": [],
+                        "obfuscation_detected": false,
+                        "hex_strings": 0,
+                        "deobfuscated_preview": null
+                    }
+                },
+                {
+                    "type": "javascript",
+                    "url": "https://cesarsgadgets.info/js/setting.js",
+                    "analysis": {
+                        "file": "setting.js",
+                        "entropy_score": 4.766129439515615,
+                        "suspicious_functions": [],
+                        "obfuscation_detected": true,
+                        "hex_strings": 0,
+                        "deobfuscated_preview": "function datehax() {\r\n    const mydate = new Date();\r\n    mydate.setDate(mydate.getDate());\r\n    let year = mydate.getFullYear(); // Use getFullYear instead of getYear\r\n    let day = mydate.getDay();\r\n    let month = mydate.getMonth();\r\n    let daym = mydate.getDate();\r\n\r\n    if (daym < 10) {\r\n        daym = \"0\" + daym;\r\n    }\r\n\r\n    const dayarray = [\"Dimanche\", \"Lundi\", \"Mardi\", \"Mercredi\", \"Jeudi\", \"Vendredi\", \"Samedi\"];\r\n    const montharray = [\"Janvier\", \"F\u00e9vrier\", \"Mars\", \"Avril\", \"Mai\", \"Juin\", \"Juillet\", \"Ao\u00fbt\", \"Septembre\", \"Octobre\", \"Novembre\", \"D\u00e9cembre\"];\r\n\r\n    return `${montharray[month]} ${daym}, ${year}`;\r\n}\r\n\r\nfunction datenhax() {\r\n    const mydate = new Date();\r\n    mydate.setDate(mydate.getDate());\r\n    let year = mydate.getFullYear(); // Use getFullYear instead of getYear\r\n    let month = mydate.getMonth() + 1; // Months are zero-indexed\r\n    let daym = mydate.getDate();\r\n\r\n    if (month < 10) {\r\n        month = \"0\" + month; // Add leading zero for months less than 10\r\n    }\r\n\r\n    return `${daym}/${month}/${year}`;\r\n}\r\n\r\nfunction datenhay() {\r\n    const mydate = new Date();\r\n    const year = mydate.getFullYear(); // Use getFullYear instead of getYear\r\n    return year.toString();\r\n}\r\n\r\nconst states = [\r\n    document.getElementById(\"qassersaa-prgsst1\"),\r\n    document.getElementById(\"qassersaa-prgsst2\"),\r\n    document.getElementById(\"qassersaa-prgsst3\"),\r\n    document.getElementById(\"qassersaa-prgsst4\")\r\n];\r\n\r\nconst dones = [\r\n    document.getElementById(\"qassersaa-prgdnn2\"),\r\n    document.getElementById(\"qassersaa-prgdnn3\"),\r\n    document.getElementById(\"qassersaa-prgdnn4\")\r\n];\r\n\r\nconst loadImg = document.getElementById(\"qassersaa-progress-loading\");\r\nconst loadBgCol = document.getElementById(\"content-changeCol\");\r\n\r\n// Function to render loader with animations and progress updates\r\nfunction renderLoader() {\r\n    setTimeout(function() {\r\n        dones[0].style.display = \"block\";\r\n        dones[0].classList.add(\"animate__animated\", \"animate__fade"
+                    }
+                },
+                {
+                    "type": "javascript",
+                    "url": "https://use.fontawesome.com/releases/v5.15.4/js/all.js",
+                    "analysis": {
+                        "file": "all.js",
+                        "entropy_score": 5.954196310386873,
+                        "suspicious_functions": [],
+                        "obfuscation_detected": true,
+                        "hex_strings": 0,
+                        "deobfuscated_preview": "/*!\n * Font Awesome Free 5.15.4 by @fontawesome - https://fontawesome.com\n * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)\n */\n! function() {\n    \"use strict\";\n    var c = {},\n        l = {};\n    try {\n        \"undefined\" != typeof window && (c = window), \"undefined\" != typeof document && (l = document)\n    } catch (c) {}\n    var h = (c.navigator || {}).userAgent,\n        a = void 0 === h ? \"\" : h,\n        z = c,\n        v = l,\n        m = (z.document, !!v.documentElement && !!v.head && \"function\" == typeof v.addEventListener && v.createElement, ~a.indexOf(\"MSIE\") || a.indexOf(\"Trident/\"), \"___FONT_AWESOME___\"),\n        e = function() {\n            try {\n                return !0\n            } catch (c) {\n                return !1\n            }\n        }();\n    var s = z || {};\n    s[m] || (s[m] = {}), s[m].styles || (s[m].styles = {}), s[m].hooks || (s[m].hooks = {}), s[m].shims || (s[m].shims = []);\n    var t = s[m];\n\n    function M(c, a) {\n        var l = (2 < arguments.length && void 0 !== arguments[2] ? arguments[2] : {}).skipHooks,\n            h = void 0 !== l && l,\n            z = Object.keys(a).reduce(function(c, l) {\n                var h = a[l];\n                return !!h.icon ? c[h.iconName] = h.icon : c[l] = h, c\n            }, {});\n        \"function\" != typeof t.hooks.addPack || h ? t.styles[c] = function(z) {\n            for (var c = 1; c < arguments.length; c++) {\n                var v = null != arguments[c] ? arguments[c] : {},\n                    l = Object.keys(v);\n                \"function\" == typeof Object.getOwnPropertySymbols && (l = l.concat(Object.getOwnPropertySymbols(v).filter(function(c) {\n                    return Object.getOwnPropertyDescriptor(v, c).enumerable\n                }))), l.forEach(function(c) {\n                    var l, h, a;\n                    l = z, a = v[h = c], h in l ? Object.defineProperty(l, h, {\n                        value: a,\n                        enum"
+                    }
+                }
+            ],
+            "visual_analysis": {
+                "brand_detected": null,
+                "confidence": 0.0,
+                "all_matches": []
+            },
+            "obfuscation_flags": [],
+            "links": [
+                {
+                    "text": "J'aime",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "R\u00e9pondre",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "J'aime",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "R\u00e9pondre",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "J'aime",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "R\u00e9pondre",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "J'aime",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "R\u00e9pondre",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "J'aime",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                },
+                {
+                    "text": "R\u00e9pondre",
+                    "href": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128#"
+                }
+            ],
+            "inputs": [
+                {
+                    "type": "textarea",
+                    "name": "comment_box",
+                    "placeholder": ""
+                }
+            ],
+            "interaction_journey": [
+                {
+                    "step": "step_00_initial",
+                    "description": "Initial Page Load (AI Suspicion: ?%)",
+                    "screenshot_path": "output/screenshot_US_step_00_initial.png",
+                    "html_path": "output/html_US_step_00_initial.html",
+                    "url": "https://cesarsgadgets.info/?sub5=35398&source_id=21003&encoded_value=223GDT1&sub1=5b1ce6d9ee034097b022e36b903e79a1&sub2=&sub3=&sub4=&sub5=35398&source_id=21003&domain=www.babosur.com&ip=176.182.162.128"
+                }
+            ]
+        }
+    ]
+}

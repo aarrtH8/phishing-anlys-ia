@@ -1,0 +1,8 @@
+playwright==1.49.0
+opencv-python-headless==4.8.1.78
+numpy==1.26.2
+aiohttp==3.9.1
+beautifulsoup4==4.12.2
+esprima==4.0.1
+requests==2.31.0
+colorama==0.4.6
