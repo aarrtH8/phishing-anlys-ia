@@ -267,6 +267,26 @@ def main():
         
     # 4. Generate Markdown
     generate_final_report(consolidated, summary, output_dir)
+    
+    # 5. Connect Brand Name & Rename Folder
+    # To correspond with user request: "dossier qui porte le nom de l'entreprise"
+    try:
+        if results:
+            brand_name = llm.extract_target_brand(results[0])
+            if brand_name and brand_name != "Unknown":
+                new_folder_name = f"{brand_name}_{timestamp}"
+                new_output_path = os.path.join("output", new_folder_name)
+                
+                # Check collision
+                if os.path.exists(new_output_path):
+                    new_output_path = os.path.join("output", f"{brand_name}_{timestamp}_1")
+                
+                os.rename(output_dir, new_output_path)
+                logger.info(f"✨ Output directory renamed to target brand: {new_output_path}")
+            else:
+                logger.info(f"Brand unknown, keeping generic name: {output_dir}")
+    except Exception as e:
+        logger.error(f"Failed to rename output directory: {e}")
 
 import traceback
 

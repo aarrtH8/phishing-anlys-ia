@@ -235,3 +235,39 @@ class LLMAnalyzer:
         except Exception as e:
             logger.error(f"LLM Pattern Detection failed: {e}")
             return {"suspicion_score": 50, "detected_patterns": [], "recommendation": "continue_exploration"}
+
+    def extract_target_brand(self, report_data: dict) -> str:
+        """
+        Analyzes the full report to identify the targeted brand/company.
+        Returns a sanitized string (e.g. 'Netflix', 'VinciAutoroutes', 'Unknown').
+        """
+        journey_summary = " ".join([s['description'] for s in report_data.get('interaction_journey', [])])
+        html_snippets = " ".join([s.get('html', '')[:500] for s in report_data.get('interaction_journey', [])[:3]]) # Check first few pages
+        
+        prompt = f"""
+        Analyze this phishing scan data to identify the BRAND or COMPANY being impersonated.
+        
+        Target URL: {report_data.get('target_url')}
+        Redirect Chain (Last): {report_data.get('redirect_chain', [{'url': 'none'}])[-1].get('url')}
+        User Journey Log: {journey_summary[:1000]}
+        HTML Snippets: {html_snippets[:2000]}
+        
+        TASK:
+        Identify the single brand name targeted (e.g. "Netflix", "Microsoft", "Vinci Autoroutes", "La Poste").
+        If generic or unknown, return "Unknown".
+        
+        RESPONSE FORMAT:
+        Return ONLY the brand name as a string. No markdown. No punctuation.
+        Example: VinciAutoroutes
+        """
+        try:
+            payload = {"model": self.model, "prompt": prompt, "stream": False}
+            response = requests.post(self.api_url, json=payload, timeout=20)
+            brand = response.json().get("response", "Unknown").strip()
+            # Sanitize
+            import re
+            brand = re.sub(r'[^a-zA-Z0-9]', '', brand)
+            return brand if len(brand) < 30 else "Unknown"
+        except Exception as e:
+            logger.warning(f"Brand extraction failed: {e}")
+            return "Unknown"
