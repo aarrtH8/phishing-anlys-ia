@@ -255,28 +255,50 @@ class BrowserManager:
             patterns = self.llm.detect_phishing_patterns(content, current_url)
             
             if patterns.get("is_final_payload_page") or patterns.get("recommendation") == "stop_reached_payload":
-                logger.info("🎯 AI detected FINAL PAYLOAD PAGE - Stopping exploration!")
+                logger.info("🎯 AI detected Suspicious Page - Taking screenshot but CONTINUING exploration...")
+                # We do NOT break here anymore, we want to go deeper!
                 journey_log.append({
-                    "step": f"step_{i:02d}_payload",
-                    "description": f"[PAYLOAD DETECTED] {patterns.get('detected_patterns', [])}",
+                    "step": f"step_{i:02d}_suspicious",
+                    "description": f"[SUSPICIOUS PAGE] {patterns.get('detected_patterns', [])}",
                     "screenshot": await page.screenshot(full_page=True),
                     "url": current_url,
                     "html": content,
                     "ai_patterns": patterns
                 })
-                break
+                # continue exploration instead of break
 
             # 3. Gather interactive elements
             candidates = []
             try:
                 candidates = await page.evaluate(r"""
                 () => {
-                    const items = Array.from(document.querySelectorAll('button, a, input[type="submit"], div[role="button"], span[class*="btn"], [onclick]'));
-                    return items.map(el => {
+                    // Helper to get text content clean
+                    const getText = (el) => (el.innerText || el.textContent || "").trim();
+                    
+                    // Specific strategy for "Commencer" / "Start" buttons that might be divs or spans
+                    const allUrlElements = Array.from(document.querySelectorAll('*'));
+                    const keywords = ["commencer", "start", "sondage", "survey", "continuer", "continue", "répondre", "answer", "participer", "participate"];
+                    
+                    const textMatches = allUrlElements.filter(el => {
+                        const txt = getText(el).toLowerCase();
+                        // Element must have one of the keywords as its MAIN text (short length)
+                        if (txt.length > 0 && txt.length < 30 && keywords.some(k => txt.includes(k))) {
+                             // Must be visible and leaf or close to leaf (no big containers)
+                             if (el.children.length < 3) return true;
+                        }
+                        return false;
+                    });
+
+                    const standardItems = Array.from(document.querySelectorAll('button, a, input[type="submit"], div[role="button"], span[class*="btn"], [onclick]'));
+                    
+                    // Combine and dedupe
+                    const combined = [...new Set([...standardItems, ...textMatches])];
+
+                    return combined.map(el => {
                         const rect = el.getBoundingClientRect();
                         return {
                             tagName: el.tagName.toLowerCase(),
-                            text: el.innerText.trim(),
+                            text: getText(el),
                             href: el.href || '',
                             visible: (rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden'),
                             role: el.getAttribute('role'),
@@ -322,9 +344,13 @@ class BrowserManager:
                 txt = c['text'].lower()
                 
                 # Heuristic scoring
-                if any(k in txt for k in priority_keywords): heuristic_score = 100
-                elif any(k in txt for k in nav_keywords): heuristic_score = 50
+                if any(k in txt for k in priority_keywords): heuristic_score = 150 # Boosted priority
+                elif any(k in txt for k in nav_keywords): heuristic_score = 100
                 
+                # Super Boost for "Commencer" specifically
+                if "commencer" in txt or "start" in txt:
+                    heuristic_score += 200
+
                 # Boost "Login" / "Submit" if we just filled a form
                 if filled_actions and ("login" in txt or "connect" in txt or "submit" in txt or "valider" in txt):
                     heuristic_score += 150
