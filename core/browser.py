@@ -250,6 +250,33 @@ class BrowserManager:
             else:
                 loading_wait_count = 0
 
+            # ⚡ FAST PATH: Force click on "Commencer" / "Start" buttons proactively
+            try:
+                # Common priority keywords for phishing CTAs
+                fast_track_regex = re.compile(r"commencer|start|sondage|survey|continuer|continue|réclamer|claim", re.IGNORECASE)
+                # Find valid clickables using Playwright Locator (reliable)
+                fast_buttons = await page.locator('button, a, input[type="submit"], div[class*="btn"], div[role="button"]').filter(has_text=fast_track_regex).all()
+                clicked_fast = False
+                for btn in fast_buttons:
+                    if await btn.is_visible():
+                        # Verify text length to avoid clicking huge containers
+                        txt = (await btn.inner_text()).strip()
+                        if len(txt) < 50: 
+                            logger.info(f"⚡ FAST TRACK: Clicking detected priority button: '{txt}'")
+                            # Highlight for screenshot
+                            await btn.evaluate("el => el.style.border = '5px solid red'")
+                            await asyncio.sleep(0.5)
+                            await btn.click(force=True, timeout=2000)
+                            clicked_fast = True
+                            await asyncio.sleep(3) # Wait for reaction
+                            break # Only click one per cycle
+                
+                if clicked_fast:
+                    logger.info("⚡ Fast Track Action Taken - Reloading state...")
+                    continue # Skip AI analysis, re-evaluate page
+            except Exception as e:
+                logger.warning(f"Fast Track check failed: {e}")
+
             # 2. AI Pattern Detection at each step
             logger.info("🤖 AI: Analyzing current page for phishing patterns...")
             patterns = self.llm.detect_phishing_patterns(content, current_url)
