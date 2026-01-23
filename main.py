@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from urllib.parse import urlparse
 
 from core.browser import BrowserManager
 from core.llm import LLMAnalyzer
@@ -15,7 +16,7 @@ from analysis.visual import VisualAnalysis
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("PhishHunter")
 
-async def analyze_phishing_url_region(url: str, headless: bool, region_code: str):
+async def analyze_phishing_url_region(url: str, headless: bool, region_code: str, output_dir: str):
     # Map regions to loc/tz
     REGIONS = {
         "US": {"locale": "en-US", "timezone": "America/New_York"},
@@ -58,11 +59,11 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
 
         for step in raw_journey:
             # Save step screenshot
-            step_filename = f"output/screenshot_{region_code}_{step['step']}.png"
+            step_filename = os.path.join(output_dir, f"screenshot_{region_code}_{step['step']}.png")
             with open(step_filename, "wb") as f: f.write(step['screenshot'])
             
             # Save HTML to file to keep JSON light
-            html_filename = f"output/html_{region_code}_{step['step']}.html"
+            html_filename = os.path.join(output_dir, f"html_{region_code}_{step['step']}.html")
             with open(html_filename, "w", encoding="utf-8", errors="ignore") as f: 
                 f.write(step.get('html', ''))
 
@@ -93,7 +94,9 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
                 java_res = java_analyzer.analyze_jar(content, filename)
                 report["files_extracted"].append({"type": "java", "url": entry["url"], "analysis": java_res})
             elif file_type == "js":
-                js_path = os.path.join("output/dump", f"{filename}.js")
+                dump_dir = os.path.join(output_dir, "dump")
+                os.makedirs(dump_dir, exist_ok=True)
+                js_path = os.path.join(dump_dir, f"{filename}.js")
                 with open(js_path, "wb") as f: f.write(content)
                 
                 # Static Analysis
@@ -111,7 +114,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
         # Visual
         screenshot = result["screenshot"]
         # Save screenshot with region prefix
-        with open(f"output/screenshot_{region_code}.png", "wb") as f: f.write(screenshot)
+        with open(os.path.join(output_dir, f"screenshot_{region_code}.png"), "wb") as f: f.write(screenshot)
         visual_res = visual_analyzer.analyze_screenshot(screenshot)
         report["visual_analysis"] = visual_res
 
@@ -124,7 +127,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
     
     return report
 
-def generate_final_report(consolidated_data, llm_summary):
+def generate_final_report(consolidated_data, llm_summary, output_dir: str):
     md = "# 🕵️ PhishHunter Final Forensic Report\n\n"
     md += f"**Target**: `{consolidated_data['target_url']}`\n"
     md += f"**Scan Time**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
@@ -209,9 +212,10 @@ def generate_final_report(consolidated_data, llm_summary):
                     md += analysis["deobfuscated_preview"][:800] + "\n...\n```\n"
                 md += "\n"
 
-    with open("output/FINAL_REPORT.md", "w", encoding="utf-8") as f:
+    report_path = os.path.join(output_dir, "FINAL_REPORT.md")
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(md)
-    logger.info("Final report generated: output/FINAL_REPORT.md")
+    logger.info(f"Final report generated: {report_path}")
 
 
 def main():
@@ -225,10 +229,19 @@ def main():
     regions = args.regions.split(",")
     results = []
     
+    
+    # Create specific output directory
+    domain = urlparse(args.url).netloc.replace(":", "_")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_id = f"{domain}_{timestamp}"
+    output_dir = os.path.join("output", run_id)
+    os.makedirs(output_dir, exist_ok=True)
+    logger.info(f"📁 Output directory: {output_dir}")
+
     # 1. Run Analysis
     for region in regions:
         code = region.strip().upper()
-        res = asyncio.run(analyze_phishing_url_region(args.url, not args.visible, code))
+        res = asyncio.run(analyze_phishing_url_region(args.url, not args.visible, code, output_dir))
         results.append(res)
     
     # 2. Consolidate
@@ -238,8 +251,7 @@ def main():
     }
     
     # Save raw JSON
-    os.makedirs("output", exist_ok=True)
-    with open("output/consolidated_data.json", "w") as f:
+    with open(os.path.join(output_dir, "consolidated_data.json"), "w") as f:
         json.dump(consolidated, f, indent=4)
         
     # 3. AI Analysis
@@ -254,7 +266,7 @@ def main():
         summary = "No analysis data captured."
         
     # 4. Generate Markdown
-    generate_final_report(consolidated, summary)
+    generate_final_report(consolidated, summary, output_dir)
 
 import traceback
 
