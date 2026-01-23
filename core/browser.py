@@ -20,6 +20,19 @@ class BrowserManager:
         self.network_log: List[Dict[str, Any]] = []
         self.downloaded_files: List[Dict[str, Any]] = []
         self.llm = LLMAnalyzer() # Initialize AI for smart detection
+        
+        # Fake Data for probing
+        self.fake_data = {
+            "email": "victim@example.com",
+            "password": "Password123!",
+            "tel": "0612345678",
+            "text": "John Doe",
+            "name": "John Doe",
+            "cc": "4532000000000000",
+            "cvv": "123",
+            "exp": "12/28",
+            "otp": "123456"
+        }
 
 
     async def start(self, locale: str = "en-US", timezone_id: str = "America/New_York"):
@@ -94,6 +107,63 @@ class BrowserManager:
                 })
             except Exception as e:
                 logger.error(f"Failed to capture body for {response.url}: {e}")
+
+    async def _fill_page_inputs(self, page) -> List[str]:
+        """Scans and fills visible inputs with fake data."""
+        filled_log = []
+        try:
+            # 1. Get all visible inputs
+            inputs = await page.locator("input, textarea, select").all()
+            
+            for inp in inputs:
+                if not await inp.is_visible(): continue
+                
+                # Get usage hints
+                id_attr = (await inp.get_attribute("id") or "").lower()
+                name_attr = (await inp.get_attribute("name") or "").lower()
+                type_attr = (await inp.get_attribute("type") or "").lower()
+                placeholder = (await inp.get_attribute("placeholder") or "").lower()
+                
+                # Determine value to fill
+                val_to_fill = ""
+                field_type = "unknown"
+                
+                # Check Password
+                if "pass" in id_attr or "pass" in name_attr or "password" in type_attr:
+                    val_to_fill = self.fake_data["password"]
+                    field_type = "password"
+                # Check Email
+                elif "mail" in id_attr or "mail" in name_attr or "email" in type_attr or "@" in placeholder:
+                    val_to_fill = self.fake_data["email"]
+                    field_type = "email"
+                # Check Phone
+                elif "tel" in id_attr or "mob" in name_attr or "phone" in type_attr or "tel" in type_attr:
+                    val_to_fill = self.fake_data["tel"]
+                    field_type = "phone"
+                # Check Credit Card
+                elif "card" in id_attr or "cc" in name_attr or "numero" in id_attr or "number" in placeholder:
+                    val_to_fill = self.fake_data["cc"]
+                    field_type = "credit_card"
+                # Check OTP/Code
+                elif "otp" in id_attr or "code" in name_attr or "code" in placeholder:
+                    val_to_fill = self.fake_data["otp"]
+                    field_type = "otp"
+                # Generic Text / Name
+                elif type_attr in ["text", ""] and ("user" in id_attr or "nom" in name_attr or "name" in name_attr):
+                    val_to_fill = self.fake_data["name"]
+                    field_type = "name"
+                
+                # Fill if we found a match and it's empty
+                if val_to_fill:
+                    current_val = await inp.input_value()
+                    if not current_val: # Only fill if empty
+                        await inp.fill(val_to_fill)
+                        filled_log.append(f"Filled {field_type} ({name_attr or id_attr})")
+                        
+        except Exception as e:
+            logger.warning(f"Input filling error: {e}")
+            
+        return filled_log
 
     async def smart_interact(self, page) -> List[Dict[str, Any]]:
         """
@@ -209,7 +279,17 @@ class BrowserManager:
                     }).filter(item => item.visible && item.text.length > 0);
                 }
                 """)
+
             except Exception as e: logger.warning(f"JS Eval failed: {e}")
+
+            # 3b. PROACTIVE: Fill Forms before clicking
+            filled_actions = await self._fill_page_inputs(page)
+            if filled_actions:
+                desc = f"Form Auto-Fill: {', '.join(filled_actions)}"
+                logger.info(f"📝 {desc}")
+                # If we filled forms, we likely want to submit. 
+                # We don't break yet, we let the click logic find the submit button.
+                # But we might want to capture this state change.
 
             # 4. AI-Powered Element Analysis (Proactive)
             ai_ranked_elements = []
@@ -236,6 +316,11 @@ class BrowserManager:
                 # Heuristic scoring
                 if any(k in txt for k in priority_keywords): heuristic_score = 100
                 elif any(k in txt for k in nav_keywords): heuristic_score = 50
+                
+                # Boost "Login" / "Submit" if we just filled a form
+                if filled_actions and ("login" in txt or "connect" in txt or "submit" in txt or "valider" in txt):
+                    heuristic_score += 150
+
                 else: heuristic_score = 10
                 
                 # AI scoring
