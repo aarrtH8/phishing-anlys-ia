@@ -166,6 +166,109 @@ class BrowserManager:
             
         return filled_log
 
+    async def _solve_math_captcha(self, page) -> bool:
+        """
+        Detects and solves simple math CAPTCHAs like: "8 + 2 = ?"
+        Returns True if a CAPTCHA was solved, False otherwise.
+        """
+        try:
+            content = await page.content()
+            
+            # Look for math CAPTCHA patterns - Check for common indicators
+            captcha_indicators = [
+                "captcha", "vérification", "verification", "calcul", 
+                "calculation", "math-problem", "sécurité"
+            ]
+            has_indicator = any(ind in content.lower() for ind in captcha_indicators)
+            if not has_indicator:
+                return False
+            
+            logger.info("🔢 Math CAPTCHA detected - attempting to solve...")
+            
+            # Strategy 1: Extract from specific ID elements (most reliable)
+            first_num = await page.evaluate('''() => {
+                const el = document.getElementById("firstNumber") || 
+                           document.querySelector("[id*='first']") ||
+                           document.querySelector(".math-problem span:first-child");
+                return el ? parseInt(el.innerText) : null;
+            }''')
+            
+            operator = await page.evaluate('''() => {
+                const el = document.getElementById("operator") ||
+                           document.querySelector("[id*='operator']") ||
+                           document.querySelector(".math-problem span:nth-child(2)");
+                return el ? el.innerText.trim() : null;
+            }''')
+            
+            second_num = await page.evaluate('''() => {
+                const el = document.getElementById("secondNumber") ||
+                           document.querySelector("[id*='second']") ||
+                           document.querySelector(".math-problem span:nth-child(3)");
+                return el ? parseInt(el.innerText) : null;
+            }''')
+            
+            # Strategy 2: Fallback - Extract from text using regex
+            if first_num is None or operator is None or second_num is None:
+                logger.info("🔢 Trying regex fallback for math extraction...")
+                # Pattern: number operator number = (result field)
+                math_match = re.search(r'(\d+)\s*([+\-×*x/÷])\s*(\d+)\s*=', content)
+                if math_match:
+                    first_num = int(math_match.group(1))
+                    operator = math_match.group(2)
+                    second_num = int(math_match.group(3))
+            
+            if first_num is None or operator is None or second_num is None:
+                logger.warning("🔢 Could not extract math CAPTCHA operands")
+                return False
+            
+            # Normalize operator
+            if operator in ['×', 'x', 'X', '*']:
+                operator = '*'
+            elif operator in ['÷', '/']:
+                operator = '/'
+                
+            # Calculate result
+            result = None
+            if operator == '+':
+                result = first_num + second_num
+            elif operator == '-':
+                result = first_num - second_num
+            elif operator == '*':
+                result = first_num * second_num
+            elif operator == '/':
+                result = first_num // second_num if second_num != 0 else 0
+            
+            if result is None:
+                logger.warning(f"🔢 Unknown operator: {operator}")
+                return False
+            
+            logger.info(f"🔢 Math CAPTCHA: {first_num} {operator} {second_num} = {result}")
+            
+            # Find and fill the result input
+            result_input = page.locator('#result, input[name="result"], .result-input, input[type="number"]').first
+            if await result_input.count() == 0:
+                logger.warning("🔢 Could not find result input field")
+                return False
+            
+            await result_input.fill(str(result))
+            logger.info(f"🔢 Filled CAPTCHA answer: {result}")
+            
+            # Find and click submit button
+            await asyncio.sleep(0.5)
+            submit_btn = page.locator('button[type="submit"], input[type="submit"], .submit-btn, button:has-text("Vérifier"), button:has-text("Verify"), button:has-text("Submit")').first
+            if await submit_btn.count() > 0:
+                await submit_btn.click()
+                logger.info("🔢 Submitted CAPTCHA answer")
+                await asyncio.sleep(2)  # Wait for redirect
+                return True
+            else:
+                logger.warning("🔢 Could not find submit button")
+                return False
+                
+        except Exception as e:
+            logger.warning(f"🔢 Math CAPTCHA solver error: {e}")
+            return False
+
     async def smart_interact(self, page) -> List[Dict[str, Any]]:
         """
         AI-Powered Adaptive Crawler: Interacts with the page using intelligent phishing detection.
@@ -250,6 +353,19 @@ class BrowserManager:
                     logger.info("Loading screen persistent. Ignoring and forcing interaction.")
             else:
                 loading_wait_count = 0
+
+            # 🔢 MATH CAPTCHA SOLVER: Try to solve CAPTCHAs before other interactions
+            captcha_solved = await self._solve_math_captcha(page)
+            if captcha_solved:
+                logger.info("🔢 CAPTCHA solved - reloading state...")
+                journey_log.append({
+                    "step": f"step_{i:02d}_captcha",
+                    "description": "CAPTCHA solved automatically",
+                    "screenshot": await page.screenshot(full_page=True),
+                    "url": page.url,
+                    "html": await page.content()
+                })
+                continue  # Re-evaluate page after CAPTCHA
 
             # ⚡ FAST PATH: Force click on "Commencer" / "Start" buttons proactively
             try:
