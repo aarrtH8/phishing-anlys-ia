@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishHunter</title>
+    <meta name="description" content="PhishHunter — Forensic phishing analysis dashboard">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-light.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23b8952a'/><text x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>P</text></svg>">
+</head>
+
+<body>
+
+    <div class="app-wrapper">
+        <nav class="navbar">
+            <div class="navbar-brand" onclick="navigate('#dashboard')">
+                <div class="navbar-logo">
+                    <img src="/static/mascot_detective.png" alt="PhishHunter">
+                </div>
+                <div>
+                    <div class="navbar-title">PhishHunter</div>
+                    <div class="navbar-subtitle">Forensic Intelligence</div>
+                </div>
+            </div>
+            <ul class="navbar-nav">
+                <li><a class="nav-link active" data-view="dashboard" onclick="navigate('#dashboard')">Dashboard</a></li>
+                <li><a class="nav-link" data-view="scan" onclick="navigate('#scan')">Nouveau scan</a></li>
+            </ul>
+        </nav>
+
+        <main class="main-content">
+            <div id="view-dashboard" class="view"></div>
+            <div id="view-report" class="view hidden"></div>
+            <div id="view-scan" class="view hidden"></div>
+        </main>
+    </div>
+
+    <div class="lightbox" id="lightbox">
+        <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+        <img id="lightbox-img" src="" alt="Screenshot">
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

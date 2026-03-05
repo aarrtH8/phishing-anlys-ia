@@ -2,6 +2,12 @@ import asyncio
 import logging
 import hashlib
 import re
+import time
+import urllib.request
+import speech_recognition as sr
+import base64
+from pydub import AudioSegment
+from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext, Response, Request
 from core.llm import LLMAnalyzer
@@ -59,22 +65,36 @@ class BrowserManager:
             ignore_https_errors=True
         )
 
-        await self._apply_stealth(self.context)
         self.page = await self.context.new_page()
+        
+        # Apply strict stealth mode to evade Cloudflare and other advanced anti-bots
+        await self._apply_stealth(self.context)
+        
         self.page.on("request", self._on_request)
         self.page.on("response", self._on_response)
 
     async def _apply_stealth(self, context: BrowserContext):
-        """Injects scripts to mask automation."""
+        """Injects fallback scripts to mask automation."""
         stealth_js = """
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            // Overwrite webdriver
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            // Mock chrome runtime
             window.chrome = { runtime: {} };
+            // Mock permissions
             const originalQuery = window.navigator.permissions.query;
             window.navigator.permissions.query = (parameters) => (
                 parameters.name === 'notifications' ? Promise.resolve({ state: Notification.permission }) : originalQuery(parameters)
             );
+            // Mock plugins and languages
             Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
             Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            // Mock WebGL
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                if (parameter === 37445) return 'Intel Inc.';
+                if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+                return getParameter.apply(this, [parameter]);
+            };
         """
         await context.add_init_script(stealth_js)
 
@@ -166,26 +186,249 @@ class BrowserManager:
             
         return filled_log
 
-    async def _solve_math_captcha(self, page) -> bool:
+    async def _solve_captcha(self, page) -> bool:
         """
-        Detects and solves simple math CAPTCHAs like: "8 + 2 = ?"
-        Returns True if a CAPTCHA was solved, False otherwise.
+        Multi-tier CAPTCHA bypass system:
+        Tier 0: Cloudflare Turnstile bypass (Stealth + Auto-Click)
+        Tier 1: AI Analysis (LLM classifies & solves)
+        Tier 2: Heuristic Solvers (math regex, known patterns)
+        Tier 3: Manual Fallback (zenity popup on VNC desktop)
+        Returns True if a CAPTCHA was bypassed (or resolved itself), False if no CAPTCHA detected.
         """
         try:
             content = await page.content()
+            content_lower = content.lower()
             
-            # Look for math CAPTCHA patterns - Check for common indicators
-            captcha_indicators = [
-                "captcha", "vérification", "verification", "calcul", 
-                "calculation", "math-problem", "sécurité"
+            # --- CAPTCHA Detection ---
+            is_cloudflare = "just a moment" in content_lower or "cloudflare" in content_lower or "cf-chl-widget" in content_lower
+
+            # STRONG indicators: these alone confirm a CAPTCHA
+            strong_indicators = [
+                "captcha", "recaptcha", "hcaptcha", "g-recaptcha", "h-captcha",
+                "math-problem", "anti-bot", "bot-check", "security-check",
+                "captcha-input", "captcha-container"
             ]
-            has_indicator = any(ind in content.lower() for ind in captcha_indicators)
-            if not has_indicator:
+            has_strong = is_cloudflare or any(ind in content_lower for ind in strong_indicators)
+            
+            if not has_strong:
+                # WEAK indicators: need a CAPTCHA-specific input to confirm
+                weak_indicators = [
+                    "vérification", "verification", "calcul", "calculation",
+                    "résolvez", "sécurité"
+                ]
+                has_weak = any(ind in content_lower for ind in weak_indicators)
+                
+                if has_weak:
+                    has_captcha_input = await page.evaluate('''() => {
+                        const cf = document.querySelector('iframe[src*="cloudflare"]');
+                        if (cf) return true;
+                        
+                        const inputs = document.querySelectorAll(
+                            'input[name*="captcha"], input[id*="captcha"], input[name="result"], ' +
+                            'input[id="result"], .captcha-input, .result-input, ' +
+                            'input[name="answer"], input[id="answer"]'
+                        );
+                        return inputs.length > 0;
+                    }''')
+                    if not has_captcha_input:
+                        return False  # Weak indicator without CAPTCHA input = not a CAPTCHA
+                else:
+                    return False  # No indicators at all
+            
+            logger.info("🛡️ CAPTCHA/Anti-Bot confirmed! Starting multi-tier bypass...")
+            url_before = page.url
+            html_before_hash = hashlib.md5((await page.content())[:3000].encode()).hexdigest()
+
+            # ═══════════════════════════════════════
+            # TIER 0: Cloudflare Turnstile Auto-Solver
+            # ═══════════════════════════════════════
+            if is_cloudflare or (await page.locator('iframe[src*="cloudflare"], iframe[src*="turnstile"]').count() > 0):
+                logger.info("☁️ TIER 0: Cloudflare detected! Attempting automatic bypass...")
+                
+                # Wait a bit, sometimes Stealth plugin bypasses it transparently
+                logger.info("☁️ Waiting 5s to see if Cloudflare auto-resolves...")
+                await asyncio.sleep(5)
+                
+                # Check if it resolved by itself
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=3000)
+                except: pass
+                
+                if page.url != url_before:
+                    logger.info("✅ TIER 0 SUCCESS: Cloudflare resolved automatically (Stealth)!")
+                    return True
+                
+                # If it's a click challenge, find the iframe and click
+                logger.info("☁️ Cloudflare did not auto-resolve. Looking for Turnstile checkbox...")
+                frames = page.frames
+                cf_frame = next((f for f in frames if "cloudflare" in f.url or "challenges" in f.url), None)
+                
+                if cf_frame:
+                    try:
+                        # Try to click the checkbox inside the iframe
+                        # The checkbox is usually inside a shadow root or standard wrapper
+                        checkbox = cf_frame.locator('.ctp-checkbox-label, input[type="checkbox"], #challenge-stage')
+                        if await checkbox.count() > 0:
+                            logger.info("☁️ Found Cloudflare checkbox! Simulating click...")
+                            # Hover first, then wait, then click (simulate human)
+                            await checkbox.first.hover()
+                            await asyncio.sleep(0.5)
+                            await checkbox.first.click(force=True)
+                            
+                            # Wait for resolution
+                            logger.info("☁️ Clicked. Waiting 8s for challenge phase to finish...")
+                            await asyncio.sleep(8)
+                            
+                            if (page.url != url_before) or (hashlib.md5((await page.content())[:3000].encode()).hexdigest() != html_before_hash):
+                                logger.info("✅ TIER 0 SUCCESS: Cloudflare challenge bypassed via click!")
+                                return True
+                    except Exception as e:
+                        logger.warning(f"☁️ Failed to click Cloudflare challenge: {e}")
+                
+                # It might still be solving, or we failed. Let's let it fall through to manual.
+                logger.warning("☁️ Cloudflare bypass couldn't resolve automatically.")
+            
+            # ═══════════════════════════════════════
+            # TIER 1: AI Analysis (LLM)
+            # ═══════════════════════════════════════
+            if not is_cloudflare: # No point asking AI for Cloudflare, it's not a text puzzle
+                logger.info("🧠 TIER 1: AI CAPTCHA Analysis...")
+                ai_result = self.llm.solve_captcha(content, page.url)
+                
+                captcha_type = ai_result.get("type", "unknown")
+                ai_answer = ai_result.get("answer")
+                ai_confidence = ai_result.get("confidence", 0)
+                ai_input_sel = ai_result.get("input_selector", "")
+                ai_submit_sel = ai_result.get("submit_selector", "")
+                
+                logger.info(f"🧠 AI Result: type={captcha_type}, answer={ai_answer}, confidence={ai_confidence}%")
+                
+                # Try AI answer if confident enough
+                if ai_answer and ai_confidence >= 70:
+                    logger.info(f"🧠 AI confident ({ai_confidence}%) — applying answer: {ai_answer}")
+                    solved = await self._apply_captcha_answer(page, str(ai_answer), ai_input_sel, ai_submit_sel)
+                    if solved:
+                        logger.info("✅ TIER 1 SUCCESS: AI solved the CAPTCHA!")
+                        return True
+                    logger.warning("🧠 AI answer applied but page didn't change. Falling through...")
+                
+                # ═══════════════════════════════════════
+                # TIER 1.5: Audio Challenge Solver (reCAPTCHA/hCaptcha)
+                # ═══════════════════════════════════════
+                logger.info("🔊 TIER 1.5: Checking for Audio Challenge...")
+                audio_solved = await self._solve_audio_captcha(page)
+                if audio_solved:
+                    logger.info("✅ TIER 1.5 SUCCESS: Audio CAPTCHA solved!")
+                    return True
+                
+                # ═══════════════════════════════════════
+                # TIER 1.7: Visual Challenge Solver (Image Grid)
+                # ═══════════════════════════════════════
+                logger.info("👁️ TIER 1.7: Checking for Visual Grid Challenge...")
+                visual_solved = await self._solve_visual_captcha(page)
+                if visual_solved:
+                    logger.info("✅ TIER 1.7 SUCCESS: Visual CAPTCHA solved!")
+                    return True
+                
+                # ═══════════════════════════════════════
+                # TIER 2: Heuristic Solvers
+                # ═══════════════════════════════════════
+                logger.info("🔧 TIER 2: Heuristic solvers...")
+                
+                if captcha_type in ["math", "unknown"]:
+                    heuristic_solved = await self._solve_math_captcha_heuristic(page, content)
+                    if heuristic_solved:
+                        logger.info("✅ TIER 2 SUCCESS: Heuristic math solver worked!")
+                        return True
+            else:
+                captcha_type = "cloudflare"
+            
+            logger.warning("❌ All autonomous CAPTCHA bypass tiers failed. Proceeding without human intervention as requested.")
+            return False
+            
+        except Exception as e:
+            logger.warning(f"🛡️ CAPTCHA solver error: {e}")
+            return False
+
+    async def _apply_captcha_answer(self, page, answer: str, input_selector: str, submit_selector: str) -> bool:
+        """Fills the answer into the input field and clicks submit. Returns True if page changed."""
+        url_before = page.url
+        html_before_hash = hashlib.md5((await page.content())[:3000].encode()).hexdigest()
+        
+        try:
+            # Try AI-suggested selector first, then common fallbacks
+            input_selectors = [s for s in [input_selector] if s] + [
+                '#result', 'input[name="result"]', 'input[name="captcha"]',
+                'input[name="answer"]', '.captcha-input', 'input[type="number"]',
+                'input[type="text"]:not([name="email"]):not([name="password"])'
+            ]
+            
+            filled = False
+            for sel in input_selectors:
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        await loc.fill(answer)
+                        logger.info(f"📝 Filled CAPTCHA answer '{answer}' in '{sel}'")
+                        filled = True
+                        break
+                except:
+                    continue
+            
+            if not filled:
+                logger.warning("❌ Could not find any input field for CAPTCHA answer")
                 return False
             
-            logger.info("🔢 Math CAPTCHA detected - attempting to solve...")
+            # Click submit
+            await asyncio.sleep(0.5)
+            submit_selectors = [s for s in [submit_selector] if s] + [
+                'button[type="submit"]', 'input[type="submit"]', '.submit-btn',
+                'button:has-text("Vérifier")', 'button:has-text("Verify")',
+                'button:has-text("Submit")', 'button:has-text("Valider")',
+                'button:has-text("OK")', 'button:has-text("Envoyer")'
+            ]
             
-            # Strategy 1: Extract from specific ID elements (most reliable)
+            clicked = False
+            for sel in submit_selectors:
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        await loc.click()
+                        logger.info(f"🖱️ Clicked submit: '{sel}'")
+                        clicked = True
+                        break
+                except:
+                    continue
+            
+            if not clicked:
+                logger.warning("❌ Could not find submit button")
+                return False
+            
+            # Verify page changed
+            await asyncio.sleep(2)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+            except:
+                pass
+            
+            html_after_hash = hashlib.md5((await page.content())[:3000].encode()).hexdigest()
+            page_changed = (page.url != url_before) or (html_after_hash != html_before_hash)
+            
+            if page_changed:
+                logger.info("✅ Page changed after CAPTCHA submission!")
+            else:
+                logger.warning("⚠️ Page did not change after CAPTCHA submission")
+            
+            return page_changed
+            
+        except Exception as e:
+            logger.warning(f"❌ CAPTCHA answer application failed: {e}")
+            return False
+
+    async def _solve_math_captcha_heuristic(self, page, content: str) -> bool:
+        """Heuristic math CAPTCHA solver (regex + DOM extraction)."""
+        try:
+            # Strategy 1: Extract from specific ID elements
             first_num = await page.evaluate('''() => {
                 const el = document.getElementById("firstNumber") || 
                            document.querySelector("[id*='first']") ||
@@ -207,10 +450,9 @@ class BrowserManager:
                 return el ? parseInt(el.innerText) : null;
             }''')
             
-            # Strategy 2: Fallback - Extract from text using regex
+            # Strategy 2: Regex fallback
             if first_num is None or operator is None or second_num is None:
                 logger.info("🔢 Trying regex fallback for math extraction...")
-                # Pattern: number operator number = (result field)
                 math_match = re.search(r'(\d+)\s*([+\-×*x/÷])\s*(\d+)\s*=', content)
                 if math_match:
                     first_num = int(math_match.group(1))
@@ -218,7 +460,6 @@ class BrowserManager:
                     second_num = int(math_match.group(3))
             
             if first_num is None or operator is None or second_num is None:
-                logger.warning("🔢 Could not extract math CAPTCHA operands")
                 return False
             
             # Normalize operator
@@ -227,46 +468,238 @@ class BrowserManager:
             elif operator in ['÷', '/']:
                 operator = '/'
                 
-            # Calculate result
+            # Calculate
             result = None
-            if operator == '+':
-                result = first_num + second_num
-            elif operator == '-':
-                result = first_num - second_num
-            elif operator == '*':
-                result = first_num * second_num
-            elif operator == '/':
-                result = first_num // second_num if second_num != 0 else 0
+            if operator == '+': result = first_num + second_num
+            elif operator == '-': result = first_num - second_num
+            elif operator == '*': result = first_num * second_num
+            elif operator == '/': result = first_num // second_num if second_num != 0 else 0
             
             if result is None:
-                logger.warning(f"🔢 Unknown operator: {operator}")
                 return False
             
-            logger.info(f"🔢 Math CAPTCHA: {first_num} {operator} {second_num} = {result}")
+            logger.info(f"🔢 Heuristic Math: {first_num} {operator} {second_num} = {result}")
+            return await self._apply_captcha_answer(page, str(result), "", "")
             
-            # Find and fill the result input
-            result_input = page.locator('#result, input[name="result"], .result-input, input[type="number"]').first
-            if await result_input.count() == 0:
-                logger.warning("🔢 Could not find result input field")
-                return False
+        except Exception as e:
+            logger.warning(f"🔢 Heuristic math solver error: {e}")
+            return False
+
+    async def _solve_audio_captcha(self, page) -> bool:
+        """Finds the audio challenge button, downloads the MP3/WAV, transcribes it, and submits."""
+        try:
+            # 1. Look for the audio button (e.g. reCAPTCHA headphones icon)
+            audio_btn_selectors = [
+                'button.rc-button-audio', '#recaptcha-audio-button', 
+                '.hcaptcha-audio-button', 'button[title*="audio"]'
+            ]
             
-            await result_input.fill(str(result))
-            logger.info(f"🔢 Filled CAPTCHA answer: {result}")
-            
-            # Find and click submit button
-            await asyncio.sleep(0.5)
-            submit_btn = page.locator('button[type="submit"], input[type="submit"], .submit-btn, button:has-text("Vérifier"), button:has-text("Verify"), button:has-text("Submit")').first
-            if await submit_btn.count() > 0:
-                await submit_btn.click()
-                logger.info("🔢 Submitted CAPTCHA answer")
-                await asyncio.sleep(2)  # Wait for redirect
-                return True
-            else:
-                logger.warning("🔢 Could not find submit button")
+            audio_btn = None
+            for iframe in page.frames:
+                for sel in audio_btn_selectors:
+                    loc = iframe.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        audio_btn = loc
+                        break
+                if audio_btn: break
+                
+            if not audio_btn:
                 return False
                 
+            logger.info("🔊 Found Audio Challenge button! Clicking...")
+            await audio_btn.click()
+            await asyncio.sleep(2)
+            
+            # 2. Find the audio source URL
+            audio_url = None
+            for iframe in page.frames:
+                loc = iframe.locator('audio').first
+                if await loc.count() > 0:
+                    src = await loc.get_attribute('src')
+                    if src:
+                        # Handle relative URLs
+                        if src.startswith('/'):
+                            parsed = urlparse(page.url)
+                            src = f"{parsed.scheme}://{parsed.netloc}{src}"
+                        audio_url = src
+                        break
+                        
+            if not audio_url:
+                # Some reCAPTCHA versions put a download link instead of <audio> tag sometimes
+                for iframe in page.frames:
+                    loc = iframe.locator('a.rc-audiochallenge-edownload-link').first
+                    if await loc.count() > 0:
+                        audio_url = await loc.get_attribute('href')
+                        break
+                        
+            if not audio_url:
+                logger.warning("🔊 Audio challenge found but couldn't locate MP3 source.")
+                return False
+                
+            logger.info(f"🔊 Downloading audio challenge: {audio_url[:50]}...")
+            
+            # 3. Download and convert to WAV
+            import tempfile
+            import os
+            
+            temp_mp3 = tempfile.mktemp(suffix=".mp3")
+            temp_wav = tempfile.mktemp(suffix=".wav")
+            
+            # Download using requests to handle headers if needed
+            import requests
+            r = requests.get(audio_url, timeout=10)
+            if r.status_code != 200:
+                logger.warning(f"🔊 Failed to download audio (Status {r.status_code})")
+                return False
+                
+            with open(temp_mp3, 'wb') as f:
+                f.write(r.content)
+                
+            # Convert MP3 to WAV via pydub (requires ffmpeg)
+            try:
+                audio = AudioSegment.from_file(temp_mp3)
+                audio.export(temp_wav, format="wav")
+            except Exception as e:
+                logger.error(f"🔊 Audio conversion failed: {e}. Is ffmpeg installed?")
+                return False
+                
+            # 4. Transcribe using SpeechRecognition
+            logger.info("🔊 Transcribing audio via local SpeechRecognition (Sphinx/Google)...")
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(temp_wav) as source:
+                audio_data = recognizer.record(source)
+                
+            try:
+                # Using Google's free STT endpoint for simplicity, Sphinx could be offline alternative
+                text = recognizer.recognize_google(audio_data)
+                logger.info(f"🔊 Transcribed text: '{text}'")
+            except sr.UnknownValueError:
+                logger.warning("🔊 Speech Recognition could not understand the audio")
+                return False
+            except sr.RequestError as e:
+                logger.warning(f"🔊 Speech Recognition API error: {e}")
+                return False
+            finally:
+                # Cleanup
+                if os.path.exists(temp_mp3): os.remove(temp_mp3)
+                if os.path.exists(temp_wav): os.remove(temp_wav)
+                
+            # 5. Input and Submit
+            input_sel = '#audio-response, input[title*="audio"], .rc-response-input'
+            submit_sel = '#recaptcha-verify-button, button[title*="verify"]'
+            
+            # Find the frame with the input
+            for iframe in page.frames:
+                loc = iframe.locator(input_sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    await loc.fill(text)
+                    await asyncio.sleep(0.5)
+                    sub_loc = iframe.locator(submit_sel).first
+                    if await sub_loc.count() > 0:
+                        await sub_loc.click()
+                        logger.info("🔊 Audio answer submitted! Waiting for resolution...")
+                        await asyncio.sleep(3)
+                        return True
+                        
+            return False
+            
         except Exception as e:
-            logger.warning(f"🔢 Math CAPTCHA solver error: {e}")
+            logger.warning(f"🔊 Audio solver error: {e}")
+            return False
+
+    async def _solve_visual_captcha(self, page) -> bool:
+        """Finds an image grid CAPTCHA, screenshots it, queries VLM, and clicks the coordinates."""
+        try:
+            # 1. Locate the CAPTCHA frame and image grid
+            # This covers reCAPTCHA and hCaptcha standard 3x3 grids or 4x4
+            grid_selectors = [
+                '#rc-imageselect', '.rc-imageselect-payload',
+                '.hcaptcha-challenge-wrap', '.challenge-container'
+            ]
+            
+            grid_loc = None
+            grid_frame = None
+            for iframe in page.frames:
+                for sel in grid_selectors:
+                    loc = iframe.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        grid_loc = loc
+                        grid_frame = iframe
+                        break
+                if grid_loc: break
+                
+            if not grid_loc:
+                return False
+                
+            logger.info("👁️ Found Image Grid CAPTCHA! Attempting visual solve...")
+            
+            # 2. Extract instructions
+            instruction = "Select the requested images."
+            inst_selectors = ['.rc-imageselect-instructions', '.prompt-text', '.challenge-instructions']
+            for sel in inst_selectors:
+                loc = grid_frame.locator(sel).first
+                if await loc.count() > 0:
+                    instruction = await loc.inner_text()
+                    break
+                    
+            logger.info(f"👁️ Challenge: '{instruction}'")
+            
+            # 3. Screenshot the grid wrapper
+            screenshot_bytes = await grid_loc.screenshot(type="jpeg", quality=80)
+            b64_img = base64.b64encode(screenshot_bytes).decode('utf-8')
+            
+            # 4. Ask VLM which tiles to click (3x3 default, some are 4x4)
+            # We assume 3x3 for simplicity
+            tiles_to_click = self.llm.solve_captcha_visual(b64_img, instruction, "3x3")
+            if not tiles_to_click:
+                logger.warning("👁️ Vision AI returned no tiles to click.")
+                return False
+                
+            # 5. Click the tiles
+            # Tiles are usually <td> or <li> inside the grid wrapper
+            # For 3x3 (9 tiles), index 1 is [0,0], index 2 is [0,1], etc.
+            tile_selectors = ['.rc-image-tile-wrapper', '.task-image', '.challenge-image']
+            tiles_loc = None
+            for sel in tile_selectors:
+                locs = grid_frame.locator(sel)
+                if await locs.count() > 0:
+                    tiles_loc = locs
+                    break
+                    
+            if not tiles_loc:
+                logger.warning("👁️ Could not find individual tiles to click.")
+                return False
+                
+            num_tiles = await tiles_loc.count()
+            logger.info(f"👁️ Found {num_tiles} interactable tiles in the grid.")
+            
+            clicked = False
+            for t_num in tiles_to_click:
+                if 1 <= t_num <= num_tiles:
+                    idx = t_num - 1
+                    logger.info(f"👁️ Clicking tile {t_num} (index {idx})...")
+                    await tiles_loc.nth(idx).click()
+                    await asyncio.sleep(0.5)
+                    clicked = True
+                    
+            if not clicked:
+                return False
+                
+            # 6. Click Verify/Next
+            await asyncio.sleep(1)
+            submit_selectors = ['#recaptcha-verify-button', '.verify-button', 'button[title*="verify"]']
+            for sel in submit_selectors:
+                loc = grid_frame.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    logger.info("👁️ Clicking Verify button...")
+                    await loc.click()
+                    await asyncio.sleep(4)
+                    return True
+                    
+            return False
+            
+        except Exception as e:
+            logger.warning(f"👁️ Visual solver error: {e}")
             return False
 
     async def smart_interact(self, page) -> List[Dict[str, Any]]:
@@ -354,13 +787,13 @@ class BrowserManager:
             else:
                 loading_wait_count = 0
 
-            # 🔢 MATH CAPTCHA SOLVER: Try to solve CAPTCHAs before other interactions
-            captcha_solved = await self._solve_math_captcha(page)
+            # 🛡️ MULTI-TIER CAPTCHA SOLVER: AI → Heuristic → Manual Popup
+            captcha_solved = await self._solve_captcha(page)
             if captcha_solved:
-                logger.info("🔢 CAPTCHA solved - reloading state...")
+                logger.info("🛡️ CAPTCHA bypassed - reloading state...")
                 journey_log.append({
                     "step": f"step_{i:02d}_captcha",
-                    "description": "CAPTCHA solved automatically",
+                    "description": "CAPTCHA bypassed (AI/Heuristic/Manual)",
                     "screenshot": await page.screenshot(full_page=True),
                     "url": page.url,
                     "html": await page.content()

@@ -1,40 +1,59 @@
-# Use Python 3.11 slim as base
-FROM python:3.11-slim
+# Use official Playwright image (includes Python, Browsers, System Deps)
+FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    DISPLAY=:99 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies including OpenJDK 17 (for cfr.jar) and dependencies for Playwright/OpenCV
+# Install System Dependencies
+# - Java (for CFR/Java analysis)
+# - X11/VNC (for visual mode)
+# - Network tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
-    curl \
+    default-jre-headless \
+    xvfb \
+    x11vnc \
+    fluxbox \
+    novnc \
+    websockify \
+    net-tools \
+    python3-numpy \
+    python3-opencv \
+    build-essential \
+    dos2unix \
+    x11-utils \
+    x11-xserver-utils \
+    feh \
+    xterm \
+    zenity \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user
-RUN groupadd -r phishhunter && useradd -r -g phishhunter -m -d /home/phishhunter phishhunter
+# Fix NoVNC webroot path for some Debian/Ubuntu versions
+RUN ln -s /usr/share/novnc /usr/share/novnc/vnc.html || true
 
-# Set working directory
 WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright browsers (chromium only to save space) and system deps
-RUN playwright install chromium
-RUN playwright install-deps chromium
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy project code
 COPY . .
 
-# Create directory for downloads/artifacts and set permissions
-RUN mkdir -p output/dump && \
-    chown -R phishhunter:phishhunter /app
+# Setup Entrypoint
+COPY entrypoint.sh /start.sh
+RUN dos2unix /start.sh && chmod +x /start.sh
 
-# Switch to non-root user
-USER phishhunter
+# Create output directory
+RUN mkdir -p output/dump && \
+    chmod -R 777 output
+
+# Expose ports
+EXPOSE 6080 5900
 
 # Entry point
-ENTRYPOINT ["python", "main.py"]
+ENTRYPOINT ["/start.sh"]

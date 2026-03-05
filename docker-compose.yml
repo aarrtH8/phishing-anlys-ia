@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  analyzer:
+    build: .
+    container_name: phish-hunter-visual
+    ports:
+      - "6080:6080" # NoVNC Web Interface
+      - "5900:5900" # VNC Raw
+    volumes:
+      - ./output:/app/output
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Access host services (Ollama)
+    environment:
+      - DISPLAY=:99
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    stdin_open: true # Keep container alive
+    tty: true

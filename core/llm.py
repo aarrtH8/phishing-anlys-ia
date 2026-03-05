@@ -1,13 +1,21 @@
+import os
 import requests
 import logging
 import json
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 class LLMAnalyzer:
     def __init__(self, model: str = "mistral"):
         self.model = model
-        self.api_url = "http://localhost:11434/api/generate"
+        # Use env var for Docker compatibility, default to localhost
+        base_host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        # We only append /api/generate if it's not already there
+        if not base_host.endswith("/api/generate"):
+            self.api_url = f"{base_host}/api/generate"
+        else:
+            self.api_url = base_host
 
     def analyze_javascript(self, js_code: str, filename: str) -> str:
         """Analyzes a JavaScript snippet for malicious intent."""
@@ -60,7 +68,7 @@ class LLMAnalyzer:
         journey_desc = "\n".join([f"- {s['step']}: {s['description']} (URL: {s.get('url','?')})" for s in report_data.get('interaction_journey', [])])
         
         chain = report_data.get('redirect_chain', [])
-        final_url = chain[-1].get('url') if chain else "Unknown"
+        final_url = chain[-1].get('url') if chain else report_data.get('target_url', 'Unknown')
         
         prompt = f"""
         You are a Cybersecurity Expert analyzing a Phishing Scan.
@@ -244,11 +252,14 @@ class LLMAnalyzer:
         journey_summary = " ".join([s['description'] for s in report_data.get('interaction_journey', [])])
         html_snippets = " ".join([s.get('html', '')[:500] for s in report_data.get('interaction_journey', [])[:3]]) # Check first few pages
         
+        chain = report_data.get('redirect_chain')
+        final_url = chain[-1].get('url') if chain else report_data.get('target_url', 'Unknown')
+        
         prompt = f"""
         Analyze this phishing scan data to identify the BRAND or COMPANY being impersonated.
         
         Target URL: {report_data.get('target_url')}
-        Redirect Chain (Last): {report_data.get('redirect_chain', [{'url': 'none'}])[-1].get('url')}
+        Final URL: {final_url}
         User Journey Log: {journey_summary[:1000]}
         HTML Snippets: {html_snippets[:2000]}
         
@@ -271,3 +282,148 @@ class LLMAnalyzer:
         except Exception as e:
             logger.warning(f"Brand extraction failed: {e}")
             return "Unknown"
+
+    def solve_captcha(self, html_snippet: str, page_url: str) -> dict:
+        """
+        AI-powered CAPTCHA analysis and solving.
+        Analyzes page HTML to:
+        1. Classify the CAPTCHA type (math, text, image, slider, recaptcha, hcaptcha, unknown)
+        2. Extract the challenge details
+        3. Attempt to provide the answer
+        
+        Returns: {"type": str, "answer": str|None, "confidence": int, 
+                  "instructions": str, "input_selector": str, "submit_selector": str}
+        """
+        prompt = f"""You are a CAPTCHA solving expert analyzing a webpage that contains a CAPTCHA challenge.
+
+PAGE URL: {page_url}
+HTML CONTENT:
+{html_snippet[:4000]}
+
+TASK:
+1. Identify the CAPTCHA type from these categories:
+   - "math": Simple arithmetic (e.g., "3 + 5 = ?")
+   - "text": Text-based question (e.g., "What color is the sky?")
+   - "slider": Drag slider to complete puzzle
+   - "recaptcha": Google reCAPTCHA (checkbox or image grid)
+   - "hcaptcha": hCaptcha challenge
+   - "image": Select images matching a description
+   - "unknown": Cannot identify
+
+2. If the CAPTCHA is solvable (math or text), provide the answer.
+
+3. Identify the CSS selector for:
+   - The input field where the answer should be typed
+   - The submit button to click after answering
+
+4. Rate your confidence (0-100) in your answer.
+
+5. Provide brief human-readable instructions for manual solving if needed.
+
+RESPONSE FORMAT (JSON only, no markdown):
+{{
+    "type": "math",
+    "challenge_description": "What is 8 + 3?",
+    "answer": "11",
+    "confidence": 95,
+    "input_selector": "#result",
+    "submit_selector": "button[type=submit]",
+    "instructions": "Enter the result of 8 + 3 in the input field and click submit"
+}}
+
+If you cannot solve it, set answer to null and confidence to 0."""
+
+        try:
+            payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
+            logger.info("🧠 AI CAPTCHA Solver: Analyzing page...")
+            response = requests.post(self.api_url, json=payload, timeout=30)
+            result = response.json().get("response", "{}")
+            if isinstance(result, str):
+                parsed = json.loads(result)
+            else:
+                parsed = result
+            
+            # Ensure required fields exist with defaults
+            return {
+                "type": parsed.get("type", "unknown"),
+                "challenge_description": parsed.get("challenge_description", ""),
+                "answer": parsed.get("answer"),
+                "confidence": parsed.get("confidence", 0),
+                "input_selector": parsed.get("input_selector", ""),
+                "submit_selector": parsed.get("submit_selector", ""),
+                "instructions": parsed.get("instructions", "Solve the CAPTCHA manually")
+            }
+        except Exception as e:
+            logger.error(f"🧠 AI CAPTCHA analysis failed: {e}")
+            return {
+                "type": "unknown",
+                "challenge_description": "",
+                "answer": None,
+                "confidence": 0,
+                "input_selector": "",
+                "submit_selector": "",
+                "instructions": "AI analysis failed. Please solve the CAPTCHA manually."
+            }
+
+    def solve_captcha_visual(self, base64_image: str, challenge_instruction: str, grid_size: str = "3x3") -> List[int]:
+        """
+        Uses a local Vision-Language Model (like llava) to solve an Image Grid CAPTCHA.
+        Returns a list of 1-indexed tile numbers to click.
+        E.g. [1, 4, 5] means click top-left, middle-left, and center tiles in a 3x3 grid.
+        """
+        prompt = f"""
+        You are a sophisticated AI CAPTCHA solver. 
+        You are looking at an image grid CAPTCHA of size {grid_size}.
+        The tiles are numbered from 1 to 9 (for a 3x3 grid) reading left-to-right, top-to-bottom.
+        1 2 3
+        4 5 6
+        7 8 9
+        
+        CHALLENGE INSTRUCTION: {challenge_instruction}
+        
+        TASK:
+        Examine the image carefully. Identify which tiles contain the requested object.
+        
+        RESPONSE FORMAT:
+        Return ONLY a JSON array of the tile numbers to click. Do not include any other text or explanation.
+        Example: [2, 5, 8]
+        If no tiles match, return: []
+        """
+        
+        try:
+            # Note: We assume the user has a vision model installed, e.g. 'llava' or 'llama3.2-vision'
+            # We hardcode to 'llava' for testing, or use self.model if we assume the main model is multimodal.
+            # Local users usually pull 'llava' specifically for vision.
+            vision_model = "llava" 
+            
+            payload = {
+                "model": vision_model,
+                "prompt": prompt,
+                "images": [base64_image],
+                "stream": False,
+                "format": "json"
+            }
+            logger.info(f"👁️ Vision AI: Analyzing CAPTCHA image with {vision_model}...")
+            response = requests.post(self.api_url, json=payload, timeout=60)
+            
+            if response.status_code == 404 or "model" in response.text.lower():
+                logger.warning(f"👁️ Vision model '{vision_model}' not found in Ollama. Please run 'ollama pull {vision_model}'.")
+                return []
+                
+            result = response.json().get("response", "[]")
+            
+            if isinstance(result, str):
+                tiles = json.loads(result)
+            else:
+                tiles = result
+                
+            if isinstance(tiles, list) and all(isinstance(t, int) for t in tiles):
+                logger.info(f"👁️ Vision AI suggests clicking tiles: {tiles}")
+                return tiles
+            else:
+                logger.warning(f"👁️ Vision AI returned malformed response: {result}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"👁️ Vision AI analysis failed: {e}")
+            return []

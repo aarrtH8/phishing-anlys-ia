@@ -1,0 +1,37 @@
+2026-02-06 16:37:52,790 - PhishHunter - INFO - 📁 Output directory: output/www.goparking-brussels.com_20260206_163752
+2026-02-06 16:37:52,791 - PhishHunter - INFO - Starting analysis for: https://www.goparking-brussels.com (Region: FR)
+2026-02-06 16:37:53,417 - PhishHunter - ERROR - Analysis failed for FR: BrowserType.launch: Executable doesn't exist at /ms-playwright/chromium-1208/chrome-linux64/chrome
+╔═══════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just updated to 1.58.0.             ║
+║ Please update docker image as well.                           ║
+║ -  current: mcr.microsoft.com/playwright/python:v1.49.0-jammy ║
+║ - required: mcr.microsoft.com/playwright/python:v1.58.0-jammy ║
+║                                                               ║
+║ <3 Playwright Team                                            ║
+╚═══════════════════════════════════════════════════════════════╝
+Traceback (most recent call last):
+  File "/app/main.py", line 50, in analyze_phishing_url_region
+    await browser.start(locale=config["locale"], timezone_id=config["timezone"])
+  File "/app/core/browser.py", line 43, in start
+    self.browser = await self.playwright.chromium.launch(
+  File "/usr/local/lib/python3.10/dist-packages/playwright/async_api/_generated.py", line 14547, in launch
+    await self._impl_obj.launch(
+  File "/usr/local/lib/python3.10/dist-packages/playwright/_impl/_browser_type.py", line 97, in launch
+    await self._channel.send(
+  File "/usr/local/lib/python3.10/dist-packages/playwright/_impl/_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+  File "/usr/local/lib/python3.10/dist-packages/playwright/_impl/_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.Error: BrowserType.launch: Executable doesn't exist at /ms-playwright/chromium-1208/chrome-linux64/chrome
+╔═══════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just updated to 1.58.0.             ║
+║ Please update docker image as well.                           ║
+║ -  current: mcr.microsoft.com/playwright/python:v1.49.0-jammy ║
+║ - required: mcr.microsoft.com/playwright/python:v1.58.0-jammy ║
+║                                                               ║
+║ <3 Playwright Team                                            ║
+╚═══════════════════════════════════════════════════════════════╝
+2026-02-06 16:37:53,444 - core.llm - INFO - Sending analysis request to Ollama (Model: mistral)...
+2026-02-06 16:37:53,449 - core.llm - ERROR - Ollama analysis failed: HTTPConnectionPool(host='localhost', port=11434): Max retries exceeded with url: /api/generate (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7b84b792cf70>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-02-06 16:37:53,464 - PhishHunter - INFO - Final report generated: output/www.goparking-brussels.com_20260206_163752/FINAL_REPORT.md
+2026-02-06 16:37:53,464 - PhishHunter - ERROR - Failed to rename output directory: list index out of range
