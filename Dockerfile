@@ -31,8 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Fix NoVNC webroot path for some Debian/Ubuntu versions
-RUN ln -s /usr/share/novnc /usr/share/novnc/vnc.html || true
+# Create index.html redirect to vnc.html for NoVNC webroot
+RUN echo '<html><head><meta http-equiv="refresh" content="0; url=vnc.html"></head><body>Redirecting...</body></html>' \
+    > /usr/share/novnc/index.html
 
 WORKDIR /app
 

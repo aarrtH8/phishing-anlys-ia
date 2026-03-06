@@ -1,6 +1,11 @@
 """
 PhishHunter GUI — Flask Backend
 Serves the web dashboard and provides API endpoints to browse scan results and launch new scans.
+
+Architecture:
+  - The Docker container 'phish-hunter-visual' runs persistently (docker compose up -d).
+  - This GUI uses 'docker exec' to run scans inside that container.
+  - VNC/NoVNC is always available at http://localhost:6080/ while the container is running.
 """
 
 import os
@@ -14,7 +19,8 @@ from flask import Flask, render_template, jsonify, request, send_from_directory,
 # Paths
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-SCAN_SCRIPT = os.path.join(BASE_DIR, "scan.ps1")
+
+CONTAINER_NAME = "phish-hunter-visual"
 
 app = Flask(__name__,
             template_folder=os.path.join(os.path.dirname(__file__), "templates"),
@@ -73,14 +79,11 @@ def list_scans():
                 scan_info["target_url"] = data.get("target_url", "Unknown")
                 if data.get("regions"):
                     scan_info["regions"] = [r.get("region", "?") for r in data["regions"]]
-                    # Extract date from first region timestamp
                     ts = data["regions"][0].get("timestamp", "")
                     if ts:
                         scan_info["date"] = ts
-                    # Detect threat level from report content
                     region_data = data["regions"][0]
                     inputs_count = len(region_data.get("inputs", []))
-                    files_count = len(region_data.get("files_extracted", []))
                     redirects = len(region_data.get("redirect_chain", []))
                     obfuscated = sum(1 for f in region_data.get("files_extracted", [])
                                      if f.get("analysis", {}).get("obfuscation_detected"))
@@ -94,22 +97,18 @@ def list_scans():
             except Exception:
                 pass
 
-        # Check for report
         report_path = os.path.join(folder_path, "FINAL_REPORT.md")
         scan_info["has_report"] = os.path.exists(report_path)
 
-        # Count screenshots
         screenshots = glob.glob(os.path.join(folder_path, "screenshot_*.png"))
         scan_info["screenshot_count"] = len(screenshots)
 
-        # Fallback date from folder mtime
         if not scan_info["date"]:
             mtime = os.path.getmtime(folder_path)
             scan_info["date"] = datetime.fromtimestamp(mtime).isoformat()
 
         scans.append(scan_info)
 
-    # Sort by date descending
     scans.sort(key=lambda s: s.get("date", ""), reverse=True)
     return jsonify(scans)
 
@@ -130,26 +129,22 @@ def get_scan(folder_name):
         "dump_files": []
     }
 
-    # Read report
     report_path = os.path.join(folder_path, "FINAL_REPORT.md")
     if os.path.exists(report_path):
         with open(report_path, "r", encoding="utf-8") as f:
             result["report_md"] = f.read()
 
-    # Read consolidated data
     json_path = os.path.join(folder_path, "consolidated_data.json")
     if os.path.exists(json_path):
         with open(json_path, "r", encoding="utf-8") as f:
             result["consolidated_data"] = json.load(f)
 
-    # List screenshots
     for fname in sorted(os.listdir(folder_path)):
         if fname.endswith(".png"):
             result["screenshots"].append(fname)
         elif fname.endswith(".html"):
             result["html_files"].append(fname)
 
-    # List dump files
     dump_dir = os.path.join(folder_path, "dump")
     if os.path.isdir(dump_dir):
         for fname in sorted(os.listdir(dump_dir)):
@@ -165,56 +160,72 @@ def serve_scan_file(folder_name, filename):
     if not os.path.isdir(folder_path):
         abort(404)
 
-    # Allow serving from dump subdirectory
     if filename.startswith("dump/"):
-        return send_from_directory(os.path.join(folder_path, "dump"),
-                                   filename[5:])
+        return send_from_directory(os.path.join(folder_path, "dump"), filename[5:])
 
     return send_from_directory(folder_path, filename)
 
 
 @app.route("/api/preflight")
 def preflight():
-    """Check if Docker and Ollama are available."""
-    checks = {"docker": False, "ollama": False, "image_built": False}
+    """Check if Docker, the analyzer container, and Ollama are available."""
+    checks = {
+        "docker": False,
+        "container_running": False,
+        "ollama": False,
+    }
 
-    # Check Docker
+    # Check Docker daemon
     try:
         r = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
         checks["docker"] = r.returncode == 0
     except Exception:
         pass
 
-    # Check Ollama
-    if checks["docker"]:
-        try:
-            import urllib.request
-            req = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
-            checks["ollama"] = req.status == 200
-        except Exception:
-            pass
+    if not checks["docker"]:
+        return jsonify(checks)
 
-    # Check if image exists
-    if checks["docker"]:
-        try:
-            r = subprocess.run(
-                ["docker", "images", "-q", "projet_mace-analyzer"],
-                capture_output=True, text=True, timeout=5)
-            # Also check other possible image names
-            if not r.stdout.strip():
-                r = subprocess.run(
-                    ["docker", "compose", "images", "-q"],
-                    capture_output=True, text=True, timeout=5, cwd=BASE_DIR)
-            checks["image_built"] = bool(r.stdout.strip())
-        except Exception:
-            pass
+    # Check if the analyzer container is running
+    try:
+        r = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER_NAME],
+            capture_output=True, text=True, timeout=5
+        )
+        checks["container_running"] = r.stdout.strip() == "true"
+    except Exception:
+        pass
+
+    # Check Ollama
+    try:
+        import urllib.request
+        req = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
+        checks["ollama"] = req.status == 200
+    except Exception:
+        pass
 
     return jsonify(checks)
 
 
+@app.route("/api/container/start", methods=["POST"])
+def start_container():
+    """Start the analyzer container in the background."""
+    try:
+        r = subprocess.run(
+            ["docker", "compose", "up", "-d", "analyzer"],
+            cwd=BASE_DIR,
+            capture_output=True, text=True, timeout=120
+        )
+        if r.returncode == 0:
+            return jsonify({"status": "started", "output": r.stdout})
+        else:
+            return jsonify({"status": "error", "output": r.stderr}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "output": str(e)}), 500
+
+
 @app.route("/api/scan", methods=["POST"])
 def launch_scan():
-    """Launch a new phishing URL scan via Docker."""
+    """Launch a new phishing URL scan via docker exec on the running container."""
     with _scan_lock:
         if _current_scan["running"]:
             return jsonify({"error": "Un scan est déjà en cours."}), 409
@@ -236,28 +247,23 @@ def launch_scan():
             _current_scan["return_code"] = None
 
         try:
-            # Build the docker compose command
-            # Service name is "analyzer" in docker-compose.yml
-            # The entrypoint (/start.sh) starts VNC/Xvfb, then executes "$@"
-            # So we pass "python main.py <url> --regions <regions>" as the command
-            cmd_args = ["python", "main.py", url, "--regions", regions]
+            # Build python command to run inside the container
+            py_args = ["python", "/app/main.py", url, "--regions", regions]
             if visible:
-                cmd_args.append("--visible")
+                py_args.append("--visible")
 
-            docker_cmd = [
-                "docker", "compose", "run", "--rm",
-                "analyzer"
-            ] + cmd_args
+            # Use docker exec to run inside the already-running container
+            docker_cmd = ["docker", "exec", CONTAINER_NAME] + py_args
 
-            _current_scan["output"] += f"[GUI] Lancement du scan...\n"
+            _current_scan["output"] += f"[GUI] Lancement du scan via docker exec...\n"
             _current_scan["output"] += f"[GUI] URL: {url}\n"
             _current_scan["output"] += f"[GUI] Régions: {regions}\n"
+            _current_scan["output"] += f"[GUI] Mode visuel: {'oui (voir http://localhost:6080/)' if visible else 'non'}\n"
             _current_scan["output"] += f"[GUI] Commande: {' '.join(docker_cmd)}\n"
             _current_scan["output"] += f"[GUI] {'='*50}\n\n"
 
             proc = subprocess.Popen(
                 docker_cmd,
-                cwd=BASE_DIR,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -278,10 +284,15 @@ def launch_scan():
             else:
                 _current_scan["output"] += f"\n[GUI] {'='*50}\n"
                 _current_scan["output"] += f"[GUI] Scan terminé avec le code {proc.returncode}.\n"
+                if proc.returncode == 1:
+                    _current_scan["output"] += (
+                        f"[GUI] Astuce: Le conteneur '{CONTAINER_NAME}' doit être démarré.\n"
+                        f"[GUI] Lancez: docker compose up -d\n"
+                        f"[GUI] Ou cliquez 'Démarrer le conteneur' dans l'interface.\n"
+                    )
 
         except FileNotFoundError:
             _current_scan["output"] += "\n[ERREUR] Docker n'est pas installé ou pas dans le PATH.\n"
-            _current_scan["output"] += "Assurez-vous que Docker Desktop est lancé.\n"
             _current_scan["return_code"] = -1
         except Exception as e:
             _current_scan["output"] += f"\n[ERREUR] {str(e)}\n"
@@ -345,4 +356,6 @@ def delete_scan(folder_name):
 if __name__ == "__main__":
     print("  PhishHunter GUI — http://localhost:5000")
     print(f"  Reading scans from: {OUTPUT_DIR}")
+    print(f"  Expecting Docker container: {CONTAINER_NAME}")
+    print(f"  Start container with: docker compose up -d")
     app.run(host="0.0.0.0", port=5000, debug=True)

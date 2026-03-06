@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import os
+import traceback
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -43,7 +44,8 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
         "visual_analysis": {},
         "obfuscation_flags": [],
         "links": [],
-        "inputs": []
+        "inputs": [],
+        "interaction_journey": []
     }
 
     try:
@@ -52,10 +54,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
         
         
         raw_journey = result.get("interaction_journey", [])
-        print(f"DEBUG_CRITICAL: main.py received {len(raw_journey)} steps from browser.")
-        if "interaction_journey" not in report: report["interaction_journey"] = []
-
-        logger.info(f"DEBUG: Browser returned {len(raw_journey)} steps.")
+        logger.info(f"Browser returned {len(raw_journey)} interaction steps.")
 
         for step in raw_journey:
             # Save step screenshot
@@ -75,8 +74,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
                 "url": step.get('url', 'unknown')
             })
         
-        logger.info(f"DEBUG: Report['interaction_journey'] has {len(report['interaction_journey'])} steps.")
-        logger.info(f"Report Generation: Captured {len(report['interaction_journey'])} interaction steps.")
+        logger.info(f"Captured {len(report['interaction_journey'])} interaction steps.")
             
         report["redirect_chain"] = result["redirect_chain"]
         report["links"] = result.get("links", [])
@@ -314,8 +312,6 @@ def main():
                 logger.info(f"Brand unknown, keeping generic name: {output_dir}")
     except Exception as e:
         logger.error(f"Failed to rename output directory: {e}")
-
-import traceback
 
 if __name__ == "__main__":
     try:

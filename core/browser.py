@@ -24,7 +24,6 @@ class BrowserManager:
         self.page: Optional[Page] = None
         self.redirect_chain: List[Dict[str, Any]] = []
         self.network_log: List[Dict[str, Any]] = []
-        self.network_log: List[Dict[str, Any]] = []
         self.downloaded_files: List[Dict[str, Any]] = []
         self.llm = LLMAnalyzer() # Initialize AI for smart detection
         
@@ -107,7 +106,7 @@ class BrowserManager:
             self.redirect_chain.append({
                 "url": response.url,
                 "status": response.status,
-                "headers": response.headers,
+                "headers": dict(response.headers),
                 "type": "http_redirect"
             })
 
@@ -123,8 +122,8 @@ class BrowserManager:
                 self.network_log.append({
                     "url": response.url,
                     "type": "java" if is_java else "js",
-                    "content": body, 
-                    "headers": response.headers
+                    "content": body,
+                    "headers": dict(response.headers)
                 })
             except Exception as e:
                 logger.error(f"Failed to capture body for {response.url}: {e}")
@@ -1105,7 +1104,6 @@ class BrowserManager:
 
             # 2. Smart Interaction
             logger.info("Starting interactive browsing session (Deep Scan)...")
-            await self.page.screenshot(path="output/screenshot_initial.png")
             
             journey = await self.smart_interact(self.page)
             
