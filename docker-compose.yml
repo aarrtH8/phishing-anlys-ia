@@ -9,10 +9,17 @@ services:
       - "5900:5900" # VNC Raw
     volumes:
       - ./output:/app/output
+      # Mount source code so changes take effect without rebuilding
+      - ./core:/app/core
+      - ./analysis:/app/analysis
+      - ./gui:/app/gui
+      - ./main.py:/app/main.py
+      - ./resources:/app/resources
     extra_hosts:
       - "host.docker.internal:host-gateway" # Access host services (Ollama)
     environment:
       - DISPLAY=:99
       - OLLAMA_HOST=http://host.docker.internal:11434
-    stdin_open: true # Keep container alive
+    stdin_open: true
     tty: true
+    restart: unless-stopped

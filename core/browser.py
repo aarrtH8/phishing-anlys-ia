@@ -1067,7 +1067,7 @@ class BrowserManager:
                 logger.info("No actionable elements found. Journey ends.")
                 break
                 
-        print(f"DEBUG_CRITICAL: smart_interact returning {len(journey_log)} steps.")
+        logger.info(f"smart_interact completed: {len(journey_log)} steps recorded.")
         return journey_log
 
     async def analyze_url(self, url: str):
