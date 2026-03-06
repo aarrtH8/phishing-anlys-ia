@@ -73,6 +73,7 @@ echo [4/5] Demarrage du conteneur PhishHunter ^(VNC + analyseur^)...
 echo      ^(arret de l'ancien conteneur si present...^)
 cd "%~dp0"
 docker compose down >nul 2>&1
+docker rm -f phish-hunter-visual >nul 2>&1
 docker compose up -d analyzer
 IF %ERRORLEVEL% NEQ 0 (
     echo [ERREUR] Impossible de demarrer le conteneur Docker.
