@@ -12,23 +12,22 @@ echo [1/5] Verification de l'environnement systeme...
 :: Check Docker
 docker info >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    echo [ATTENTION] Docker ne semble pas etre lance ou installe.
-    echo Assurez-vous d'avoir ouvert Docker Desktop.
-    echo.
-    set /p "WAIT=Appuyez sur Entree pour continuer quand meme..."
+    echo [ERREUR] Docker n'est pas lance ou installe.
+    echo Ouvrez Docker Desktop puis relancez ce script.
+    pause
+    exit /b 1
 ) ELSE (
-    echo      - Docker detecte.
+    echo      - Docker OK.
 )
 
 :: Check Ollama
 netstat -an | find ":11434" >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    echo [ATTENTION] Ollama ne tourne pas sur le port 11434.
-    echo Lancement d'Ollama en arriere-plan...
+    echo      - Ollama absent, lancement en arriere-plan...
     start /min cmd /c "ollama serve"
     timeout /t 3 >nul
 ) ELSE (
-    echo      - Ollama detecte.
+    echo      - Ollama OK.
 )
 
 :: Check Python
@@ -38,7 +37,7 @@ IF %ERRORLEVEL% NEQ 0 (
     pause
     exit /b 1
 ) ELSE (
-    echo      - Python detecte.
+    echo      - Python OK.
 )
 
 
@@ -47,30 +46,25 @@ echo.
 echo [2/5] Verification des dependances Python...
 python -m pip show flask >nul 2>&1
 IF %ERRORLEVEL% NEQ 0 (
-    echo      Installation des bibliotheques manquantes...
+    echo      Installation des dependances...
     python -m pip install -r "%~dp0requirements.txt" >nul 2>&1
 ) ELSE (
     echo      - Dependances Python OK.
 )
 
 
-:: 3. Construction de l'image Docker si necessaire
+:: 3. Rebuild de l'image Docker (toujours, pour integrer les derniers changements)
 echo.
-echo [3/5] Verification de l'image Docker PhishHunter...
-docker images -q phish-hunter-visual >nul 2>&1
-docker compose -f "%~dp0docker-compose.yml" images -q analyzer 2>nul | findstr /r "." >nul
+echo [3/5] Rebuild de l'image Docker PhishHunter...
+echo      ^(inclut les derniers changements de code^)
+cd "%~dp0"
+docker compose build analyzer
 IF %ERRORLEVEL% NEQ 0 (
-    echo      - Construction de l'image Docker ^(premiere fois, peut prendre quelques minutes^)...
-    cd "%~dp0"
-    docker compose build analyzer
-    IF %ERRORLEVEL% NEQ 0 (
-        echo [ERREUR] Echec de la construction Docker.
-        pause
-        exit /b 1
-    )
-) ELSE (
-    echo      - Image Docker OK.
+    echo [ERREUR] Echec du build Docker.
+    pause
+    exit /b 1
 )
+echo      - Image Docker a jour.
 
 
 :: 4. Demarrage du conteneur Docker (VNC + NoVNC)
@@ -84,8 +78,9 @@ IF %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 echo      - Conteneur demarre.
-echo      - Interface VNC: http://localhost:6080/
-echo      - Pour voir le navigateur en temps reel, ouvrez l'URL ci-dessus.
+echo      - NoVNC : http://localhost:6080/
+echo      - Attendez quelques secondes que VNC soit pret...
+timeout /t 4 >nul
 
 
 :: 5. Lancement de l'interface graphique Web
@@ -95,8 +90,8 @@ echo.
 echo  =======================================================
 echo   Interface GUI : http://localhost:5000
 echo   Interface VNC : http://localhost:6080/
-echo   Appuyez sur Ctrl+C pour arreter le serveur GUI.
-echo   Pour arreter le conteneur: docker compose down
+echo   Ctrl+C pour arreter le serveur GUI.
+echo   Arreter le conteneur : docker compose down
 echo  =======================================================
 echo.
 
