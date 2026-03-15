@@ -132,7 +132,8 @@ Sois concis (4-5 phrases max). Réponds en français.
                 data_str = (raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw))[:300]
                 post_info += f"  → {ps.get('url', '?')} | data: {data_str}\n"
 
-        prompt = f"""Tu es un Expert en Cybersécurité analysant un scan de phishing complet.
+        prompt = f"""Tu es un Expert en Cybersécurité chargé d'analyser objectivement un scan de site web.
+Tu dois distinguer les vrais sites de phishing des sites légitimes. NE PAS sur-conclure.
 
 DONNÉES:
 Cible: {report_data.get('target_url')}
@@ -145,14 +146,21 @@ PARCOURS INTERACTIF (simulation victime):
 ARTEFACTS TÉLÉCHARGÉS:
 {json.dumps(report_data.get('files_extracted', []), indent=2)[:1500]}
 
-TÂCHE — Rédige un Rapport Forensique Détaillé en Markdown comprenant:
-1. **Résumé exécutif** : Nature de l'attaque, marque usurpée, objectif (collecte identifiants/CB/OTP).
-2. **Analyse des preuves** : Cite les étapes spécifiques du parcours pour prouver l'intention malveillante.
-3. **Techniques d'attaque** : Explique pourquoi les mécanismes (obfuscation, fake survey, urgence) sont efficaces.
-4. **Mapping MITRE ATT&CK** : Liste les techniques applicables (ex: T1566.002, T1056.001, T1204.001).
-5. **IOCs extraits** : Domaines, IPs, URLs de collecte identifiés.
-6. **Évaluation de la sévérité** : FAIBLE / MOYEN / ÉLEVÉ / CRITIQUE avec justification.
-7. **Recommandations** : Actions immédiates pour les victimes et équipes de sécurité.
+CONSIGNES IMPORTANTES:
+- Si le domaine analysé est un site connu et légitime (ex: anthropic.com, google.com, github.com, microsoft.com, etc.), indique clairement que c'est un SITE LÉGITIME et arrête-toi là.
+- N'invente pas de techniques d'attaque si les preuves ne le justifient pas.
+- Un formulaire de connexion standard sur un domaine légitime N'EST PAS du phishing.
+- Base-toi sur des faits concrets (URLs suspectes, données POST exfiltrées, domaine récent, fausse marque).
+
+TÂCHE — Rédige un Rapport Forensique Objectif en Markdown:
+1. **Verdict** : SITE LÉGITIME / PHISHING PROBABLE / PHISHING CONFIRMÉ — avec justification en 1-2 phrases.
+2. **Résumé exécutif** : Nature du site, marque éventuellement usurpée, objectif détecté.
+3. **Analyse des preuves** : Cite uniquement les étapes/artefacts qui prouvent l'intention (ou l'absence d'intention malveillante).
+4. **Techniques d'attaque** (uniquement si phishing détecté) : Mécanismes utilisés.
+5. **Mapping MITRE ATT&CK** (uniquement si phishing détecté).
+6. **IOCs extraits** : Domaines, IPs, URLs suspects identifiés (ou "Aucun IOC suspect" si site légitime).
+7. **Évaluation de la sévérité** : NON APPLICABLE / FAIBLE / MOYEN / ÉLEVÉ / CRITIQUE.
+8. **Recommandations** : Adaptées au verdict.
 
 Utilise le gras pour les points clés. Réponds entièrement en français.
 """
@@ -217,30 +225,28 @@ Utilise le gras pour les points clés. Réponds entièrement en français.
         # Limit elements to avoid token overflow
         elements_summary = json.dumps(elements[:15], indent=2)
         
-        prompt = f"""
-        You are a Phishing Detection AI. Analyze these interactive elements from a suspected phishing page.
-        
-        URL: {url}
-        ELEMENTS:
-        {elements_summary}
-        
-        For each element, assign a "phishing_score" from 0-100 based on:
-        - 90-100: Definitely a phishing call-to-action (claim prize, verify account, etc.)
-        - 70-89: Likely phishing related (continue survey, next step, etc.)
-        - 50-69: Possibly suspicious (generic buttons)
-        - 0-49: Not suspicious (navigation, terms, close buttons)
-        
-        RESPONSE FORMAT:
-        Return a JSON array with each element having its original properties PLUS:
-        - "phishing_score": 0-100
-        - "ai_reason": brief explanation
-        
-        Example:
-        [
-            {{"text": "Claim Your Prize", "phishing_score": 95, "ai_reason": "Classic phishing CTA"}},
-            {{"text": "Cancel", "phishing_score": 10, "ai_reason": "Exit action, not phishing"}}
-        ]
-        """
+        prompt = f"""Tu es une IA de détection de phishing. Analyse ces éléments interactifs d'une page web.
+ATTENTION: Beaucoup de sites sont légitimes. Ne pas sur-scorer des boutons normaux.
+
+URL: {url}
+ÉLÉMENTS:
+{elements_summary}
+
+Attribue un "phishing_score" de 0-100 à chaque élément:
+- 85-100: CTA phishing clairement malveillant ("Réclamez votre prix", "Vérifiez votre compte bancaire" sur site suspect)
+- 60-84: Probablement phishing (sondage avec récompense, urgence artificielle)
+- 30-59: Ambigu (bouton générique sur page suspecte)
+- 0-29: Normal — navigation, connexion, inscription, fermeture, termes sur site légitime
+
+RÈGLE CLEF: Sur un domaine légitime connu, TOUS les éléments obtiennent 0-20.
+Un bouton "Se connecter" ou "S'abonner" sur un vrai site = score 5-15, JAMAIS 50+.
+
+FORMAT (JSON array uniquement):
+[
+    {{"text": "Réclamez votre cadeau", "phishing_score": 92, "ai_reason": "Promesse de récompense classique phishing"}},
+    {{"text": "Connexion", "phishing_score": 8, "ai_reason": "Bouton de connexion standard sur site légitime"}}
+]
+"""
         result = self._call_ollama_json(
             {"model": self.model, "prompt": prompt, "stream": False}, timeout=35
         )
@@ -251,37 +257,49 @@ Utilise le gras pour les points clés. Réponds entièrement en français.
         Detects phishing patterns in the page content.
         Returns a dict with detected patterns and overall suspicion score.
         """
-        prompt = f"""
-        Analyze this webpage for phishing indicators.
-        
-        URL: {url}
-        HTML CONTENT (truncated):
-        {html_content[:2500]}
-        
-        DETECT THESE PATTERNS:
-        1. Urgency tactics (countdown timers, "limited time", "expires soon")
-        2. Reward promises ("you won", "congratulations", "free gift")
-        3. Fake branding (mentions of Apple, Google, Amazon, Microsoft, banks)
-        4. Data harvesting forms (credit card, SSN, password fields)
-        5. Social engineering (fake surveys, "verify your account")
-        6. Suspicious redirects or URL patterns
-        
-        RESPONSE FORMAT (JSON only):
-        {{
-            "suspicion_score": 0-100,
-            "detected_patterns": ["pattern1", "pattern2"],
-            "brand_impersonation": "CompanyName or null",
-            "has_data_harvesting_form": true/false,
-            "is_final_payload_page": true/false,
-            "recommendation": "continue_exploration" or "stop_reached_payload"
-        }}
-        """
+        prompt = f"""Tu es un expert en cybersécurité chargé d'analyser une page web.
+Tu dois distinguer PRÉCISÉMENT les vrais sites de phishing des sites légitimes.
+
+URL ANALYSÉE: {url}
+CONTENU HTML (tronqué):
+{html_content[:2500]}
+
+RÈGLES IMPORTANTES ANTI-FAUX-POSITIFS:
+- Les sites officiels connus (anthropic.com, google.com, microsoft.com, github.com, etc.) ont un score de 0-5.
+- Un simple formulaire de connexion sur un domaine légitime N'EST PAS du phishing.
+- Des boutons "Continuer", "S'abonner", "Se connecter" sur un site légitime ont un score de 0-20.
+- Le phishing RÉEL se reconnaît à: domaine suspect + promesses de gains + urgence artificielle + collecte CB/mot de passe sur un faux site.
+- Un site de documentation, blog, ou SaaS légitime doit avoir suspicion_score < 15.
+
+VRAIS INDICATEURS DE PHISHING (score élevé uniquement si plusieurs présents):
+1. Promesses de gains improbables ("vous avez gagné", "félicitations", "cadeau gratuit")
+2. Urgence artificielle avec countdown + menace de perte
+3. Collecte de données sensibles (CB, OTP, mot de passe) sur un domaine suspect/inconnu
+4. Imitation visuelle d'une marque connue sur un domaine différent
+5. Faux sondages avec récompense au bout
+6. Domaine ressemblant à une marque (typosquatting)
+
+FORMAT DE RÉPONSE (JSON uniquement):
+{{
+    "suspicion_score": 0-100,
+    "detected_patterns": ["pattern1", "pattern2"],
+    "brand_impersonation": "NomMarque ou null",
+    "has_data_harvesting_form": true/false,
+    "is_final_payload_page": true/false,
+    "recommendation": "continue_exploration" ou "stop_reached_payload",
+    "is_legitimate_site": true/false
+}}
+"""
         result = self._call_ollama_json(
             {"model": self.model, "prompt": prompt, "stream": False}, timeout=30
         )
         if isinstance(result, dict) and "suspicion_score" in result:
+            # If the LLM marks it as a legitimate site, cap the score at 10
+            if result.get("is_legitimate_site"):
+                result["suspicion_score"] = min(result["suspicion_score"], 10)
+                result["recommendation"] = "continue_exploration"
             return result
-        return {"suspicion_score": 50, "detected_patterns": [], "recommendation": "continue_exploration"}
+        return {"suspicion_score": 10, "detected_patterns": [], "recommendation": "continue_exploration"}
 
     def extract_target_brand(self, report_data: dict) -> str:
         """

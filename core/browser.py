@@ -1142,11 +1142,26 @@ class BrowserManager:
         # Initial AI Pattern Detection
         logger.info("🤖 AI: Analyzing initial page for phishing patterns...")
         initial_patterns = self.llm.detect_phishing_patterns(init_html, page.url)
-        logger.info(f"🤖 AI Initial Analysis: Suspicion={initial_patterns.get('suspicion_score', '?')}%, Patterns={initial_patterns.get('detected_patterns', [])}")
-        
+        initial_score = initial_patterns.get('suspicion_score', 0)
+        is_legit = initial_patterns.get('is_legitimate_site', False)
+        logger.info(f"🤖 AI Initial Analysis: Suspicion={initial_score}%, Légitime={is_legit}, Patterns={initial_patterns.get('detected_patterns', [])}")
+
+        # If AI immediately identifies a legitimate site with very low suspicion, stop interaction
+        if is_legit and initial_score < 15:
+            journey_log.append({
+                "step": "step_00_initial",
+                "description": f"Page initiale — site légitime détecté (suspicion: {initial_score}%)",
+                "screenshot": await page.screenshot(full_page=True),
+                "url": page.url,
+                "html": init_html,
+                "ai_patterns": initial_patterns
+            })
+            logger.info("✅ Site identifié comme légitime par l'IA — exploration minimale.")
+            return journey_log
+
         journey_log.append({
             "step": "step_00_initial",
-            "description": f"Initial Page Load (AI Suspicion: {initial_patterns.get('suspicion_score', '?')}%)",
+            "description": f"Page initiale (suspicion IA: {initial_score}%)",
             "screenshot": await page.screenshot(full_page=True),
             "url": page.url,
             "html": init_html,

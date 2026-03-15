@@ -371,6 +371,24 @@ def compute_risk_score(report_data: dict, threat_intel: dict = None) -> dict:
     factors = []
     ti = threat_intel or {}
 
+    # ── Legitimacy fast-exit: well-known old domain with zero VT detections ──
+    # Avoid false positives on legitimate sites (e.g., anthropic.com, google.com)
+    whois_pre = ti.get("whois") or {}
+    vt_pre = ti.get("virustotal") or {}
+    age_pre = whois_pre.get("age_days")
+    vt_malicious_pre = vt_pre.get("malicious", 0) if not vt_pre.get("skipped") and not vt_pre.get("error") else None
+    urlscan_pre = ti.get("urlscan") or {}
+    if (
+        age_pre is not None and age_pre > 365           # domain > 1 year old
+        and (vt_malicious_pre is None or vt_malicious_pre == 0)  # no VT flags
+        and not urlscan_pre.get("malicious_flags", 0)   # no URLScan flags
+        and not (ti.get("ssl") or {}).get("is_self_signed")      # valid SSL
+    ):
+        # Cap the maximum possible score at 40 for clearly legitimate-looking domains
+        _legitimacy_cap = 40
+    else:
+        _legitimacy_cap = 100
+
     # ── VirusTotal ──
     vt = ti.get("virustotal") or {}
     if not vt.get("skipped") and not vt.get("error"):
@@ -525,7 +543,9 @@ def compute_risk_score(report_data: dict, threat_intel: dict = None) -> dict:
         score += 15
         factors.append(f"{len(post_submissions)} soumission(s) POST détectée(s) — exfiltration probable (+15)")
 
-    score = min(100, score)
+    score = min(_legitimacy_cap, score)
+    if _legitimacy_cap < 100 and score == _legitimacy_cap:
+        factors.append(f"Score plafonné à {_legitimacy_cap} (domaine ancien, aucune détection VT/URLScan)")
 
     if score >= 75:
         level = "critical"
