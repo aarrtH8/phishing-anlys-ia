@@ -5,6 +5,7 @@ Serves the web dashboard and provides API endpoints to browse scan results and l
 
 import os
 import json
+import pathlib
 import subprocess
 import threading
 import glob
@@ -47,6 +48,15 @@ _current_scan = {
     "output": "",
     "return_code": None
 }
+
+
+def _safe_folder_path(folder_name: str):
+    """Resolve folder_name inside OUTPUT_DIR, abort(400) if traversal detected."""
+    output_real = pathlib.Path(OUTPUT_DIR).resolve()
+    folder_path = (output_real / folder_name).resolve()
+    if not str(folder_path).startswith(str(output_real) + os.sep) and folder_path != output_real:
+        abort(400)
+    return folder_path
 
 
 # ─────────────────────────── Pages ───────────────────────────
@@ -166,9 +176,10 @@ def list_scans():
 @app.route("/api/scans/<folder_name>")
 def get_scan(folder_name):
     """Get full details for a single scan."""
-    folder_path = os.path.join(OUTPUT_DIR, folder_name)
-    if not os.path.isdir(folder_path):
+    folder_path = _safe_folder_path(folder_name)
+    if not folder_path.is_dir():
         abort(404)
+    folder_path = str(folder_path)
 
     result = {
         "id": folder_name,
@@ -210,8 +221,6 @@ def get_scan(folder_name):
 @app.route("/api/scans/<folder_name>/files/<path:filename>")
 def serve_scan_file(folder_name, filename):
     """Serve any file from a scan folder (screenshots, HTML, etc.)."""
-    import pathlib
-
     # Prevent directory traversal: resolve both paths and check containment
     output_real = pathlib.Path(OUTPUT_DIR).resolve()
     folder_path = (output_real / folder_name).resolve()
@@ -438,14 +447,14 @@ def scan_status():
 @app.route("/api/scans/<folder_name>/download/json")
 def download_scan_json(folder_name):
     """Download the consolidated_data.json for a scan as a file attachment."""
-    folder_path = os.path.join(OUTPUT_DIR, folder_name)
-    if not os.path.isdir(folder_path):
+    folder_path = _safe_folder_path(folder_name)
+    if not folder_path.is_dir():
         abort(404)
-    json_path = os.path.join(folder_path, "consolidated_data.json")
-    if not os.path.exists(json_path):
+    json_path = folder_path / "consolidated_data.json"
+    if not json_path.exists():
         abort(404)
     return send_from_directory(
-        folder_path,
+        str(folder_path),
         "consolidated_data.json",
         as_attachment=True,
         download_name=f"phishhunter_{folder_name}.json"
@@ -455,14 +464,14 @@ def download_scan_json(folder_name):
 @app.route("/api/scans/<folder_name>/download/report")
 def download_scan_report(folder_name):
     """Download the FINAL_REPORT.md for a scan as a file attachment."""
-    folder_path = os.path.join(OUTPUT_DIR, folder_name)
-    if not os.path.isdir(folder_path):
+    folder_path = _safe_folder_path(folder_name)
+    if not folder_path.is_dir():
         abort(404)
-    report_path = os.path.join(folder_path, "FINAL_REPORT.md")
-    if not os.path.exists(report_path):
+    report_path = folder_path / "FINAL_REPORT.md"
+    if not report_path.exists():
         abort(404)
     return send_from_directory(
-        folder_path,
+        str(folder_path),
         "FINAL_REPORT.md",
         as_attachment=True,
         download_name=f"phishhunter_{folder_name}_report.md"
@@ -473,9 +482,10 @@ def download_scan_report(folder_name):
 def delete_scan(folder_name):
     """Delete a scan result folder."""
     import shutil
-    folder_path = os.path.join(OUTPUT_DIR, folder_name)
-    if not os.path.isdir(folder_path):
+    folder_path = _safe_folder_path(folder_name)
+    if not folder_path.is_dir():
         abort(404)
+    folder_path = str(folder_path)
 
     try:
         shutil.rmtree(folder_path)

@@ -32,7 +32,7 @@ def validate_url(url: str) -> str:
     return url
 
 
-async def analyze_phishing_url_region(url: str, headless: bool, region_code: str, output_dir: str):
+async def analyze_phishing_url_region(url: str, headless: bool, region_code: str, output_dir: str, model: str = "mistral"):
     # Map regions to loc/tz
     REGIONS = {
         "US": {"locale": "en-US", "timezone": "America/New_York"},
@@ -48,7 +48,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
     java_analyzer = JavaForensics()
     js_analyzer = JSAnalysis()
     visual_analyzer = VisualAnalysis()
-    llm = LLMAnalyzer(model="mistral")
+    llm = LLMAnalyzer(model=model)
 
     report = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -170,7 +170,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
     return report
 
 
-def generate_final_report(consolidated_data, llm_summary, output_dir: str):
+def generate_final_report(consolidated_data, llm_summary, output_dir: str, model: str = "mistral"):
     md = "# PhishHunter Final Forensic Report\n\n"
     md += f"**Target**: `{consolidated_data['target_url']}`\n"
     md += f"**Scan Time**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
@@ -263,7 +263,7 @@ def generate_final_report(consolidated_data, llm_summary, output_dir: str):
            "Below is the step-by-step analysis performed by the AI Agent.\n\n")
 
     ref_region = consolidated_data["regions"][0]
-    llm = LLMAnalyzer(model="mistral")
+    llm = LLMAnalyzer(model=model)
 
     if ref_region.get("interaction_journey"):
         steps = ref_region["interaction_journey"]
@@ -413,7 +413,7 @@ def main():
     # 2. Browser Analysis per region
     results = []
     for region in regions:
-        res = asyncio.run(analyze_phishing_url_region(target_url, not args.visible, region, output_dir))
+        res = asyncio.run(analyze_phishing_url_region(target_url, not args.visible, region, output_dir, model=args.model))
         results.append(res)
 
     # 3. Risk Score
@@ -446,7 +446,7 @@ def main():
     consolidated["network_ioc_analysis"] = network_ioc_analysis
 
     # 6. Generate Markdown Report
-    generate_final_report(consolidated, summary, output_dir)
+    generate_final_report(consolidated, summary, output_dir, model=args.model)
 
     # 7. Rename folder to brand name
     try:
