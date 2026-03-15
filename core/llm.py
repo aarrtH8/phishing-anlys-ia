@@ -21,21 +21,21 @@ class LLMAnalyzer:
         """Analyzes a JavaScript snippet for malicious intent."""
         prompt = f"""
         You are a Malware Analyst. Analyze this suspicious JavaScript file extracted from a phishing site.
-        
+
         FILENAME: {filename}
-        CODE SNIPPET (First 2000 chars):
-        {js_code[:2000]}
-        
+        CODE SNIPPET (First 4000 chars):
+        {js_code[:4000]}
+
         TASK:
         1. Identify the purpose (e.g., obfuscation, redirection, fingerprinting, payload delivery).
         2. Highlight any specific dangerous functions or logic.
         3. Explain exactly what this script tries to do to the victim.
-        
-        Keep it concise (3-4 sentences).
+
+        Keep it concise (3-4 sentences). Réponds en français.
         """
         try:
             payload = {"model": self.model, "prompt": prompt, "stream": False}
-            response = requests.post(self.api_url, json=payload, timeout=40)
+            response = requests.post(self.api_url, json=payload, timeout=90)
             return response.json().get("response", "Analysis failed.").strip()
         except Exception as e:
             logger.error(f"JS Analysis failed: {e}")
@@ -43,18 +43,24 @@ class LLMAnalyzer:
 
     def analyze_journey_step(self, step_data: dict) -> str:
         """Analyzes a specific step in the user journey."""
+        import re as _re
+        # Extract visible text from HTML (strip tags) rather than sending raw markup
+        html = step_data.get('html', '') or ''
+        visible_text = _re.sub(r'<[^>]+>', ' ', html)
+        visible_text = _re.sub(r'\s+', ' ', visible_text).strip()[:800]
+
         prompt = f"""
-        Analyze this Phishing Interaction Step.
-        
+        Analyse this Phishing Interaction Step.
+
         Step: {step_data.get('step')}
         Action Taken: {step_data.get('description')}
         Current URL: {step_data.get('url')}
-        Page HTML Snippet:
-        {step_data.get('html', '')[:1000]}...
-        
+        Visible Page Text:
+        {visible_text}
+
         Question:
         What is the attacker trying to do here? (e.g. build trust, simulate loading, extract data, redirect).
-        Be very brief (1-2 sentences).
+        Be very brief (1-2 sentences). Réponds en français.
         """
         try:
             payload = {"model": self.model, "prompt": prompt, "stream": False}
@@ -64,34 +70,45 @@ class LLMAnalyzer:
 
     def analyze_report(self, report_data: dict) -> str:
         """Sends the report JSON to Ollama for a security summary."""
-        
+
         journey_desc = "\n".join([f"- {s['step']}: {s['description']} (URL: {s.get('url','?')})" for s in report_data.get('interaction_journey', [])])
-        
+
         chain = report_data.get('redirect_chain', [])
         final_url = chain[-1].get('url') if chain else report_data.get('target_url', 'Unknown')
-        
+
+        # Include visual analysis findings
+        visual = report_data.get('visual_analysis', {}) or {}
+        visual_info = ""
+        if visual:
+            visual_info = (
+                f"\nVISUAL ANALYSIS:\n"
+                f"  Brand detected: {visual.get('brand_detected', 'None')}\n"
+                f"  Logos found: {visual.get('logos_found', [])}\n"
+                f"  OCR text snippet: {str(visual.get('ocr_text', ''))[:200]}\n"
+            )
+
         prompt = f"""
         You are a Cybersecurity Expert analyzing a Phishing Scan.
-        
+
         DATA:
         Target: {report_data.get('target_url')}
         Redirect Chain: {len(chain)} hops.
         Final URL: {final_url}
         Inputs Found: {len(report_data.get('inputs', []))} (Types: {[i.get('type') for i in report_data.get('inputs', [])[:5]]})
-        
+        {visual_info}
         INTERACTIVE JOURNEY (Bot clicked buttons):
         {journey_desc}
-        
+
         ARTIFACTS:
         {json.dumps(report_data.get('files_extracted', []), indent=2)[:1500]}
-        
+
         TASK:
         Write a detailed Forensic Report.
         1. **Evidence-Based Analysis**: Cite specific steps from the 'Interactive Journey' to prove malicious intent (e.g., "After clicking 'Start', the user is redirected to...").
         2. **Technique Explanation**: Explain *why* the obfuscation or the survey flow is effective/malicious.
         3. **Severity**: Assessment.
-        
-        Format as Markdown. Use bolding for key findings.
+
+        Format as Markdown. Use bolding for key findings. Réponds en français.
         """
 
         try:
@@ -148,7 +165,7 @@ class LLMAnalyzer:
         """
         try:
             payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-            response = requests.post(self.api_url, json=payload, timeout=15)
+            response = requests.post(self.api_url, json=payload, timeout=30)
             result = response.json().get("response", "{}")
             if isinstance(result, str):
                 return json.loads(result)
@@ -194,7 +211,7 @@ class LLMAnalyzer:
         """
         try:
             payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-            response = requests.post(self.api_url, json=payload, timeout=20)
+            response = requests.post(self.api_url, json=payload, timeout=35)
             result = response.json().get("response", "[]")
             if isinstance(result, str):
                 return json.loads(result)
@@ -235,7 +252,7 @@ class LLMAnalyzer:
         """
         try:
             payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-            response = requests.post(self.api_url, json=payload, timeout=15)
+            response = requests.post(self.api_url, json=payload, timeout=30)
             result = response.json().get("response", "{}")
             if isinstance(result, str):
                 return json.loads(result)
@@ -283,12 +300,12 @@ class LLMAnalyzer:
             logger.warning(f"Brand extraction failed: {e}")
             return "Unknown"
 
-    def solve_captcha(self, html_snippet: str, page_url: str) -> dict:
+    def solve_captcha(self, html_snippet: str, page_url: str, base64_image: str = None) -> dict:
         """
         AI-powered CAPTCHA analysis and solving.
-        Analyzes page HTML to:
+        Analyzes page HTML and an optional screenshot to:
         1. Classify the CAPTCHA type (math, text, image, slider, recaptcha, hcaptcha, unknown)
-        2. Extract the challenge details
+        2. Extract the challenge details (especially if the math/text is inside an image)
         3. Attempt to provide the answer
         
         Returns: {"type": str, "answer": str|None, "confidence": int, 
@@ -310,7 +327,7 @@ TASK:
    - "image": Select images matching a description
    - "unknown": Cannot identify
 
-2. If the CAPTCHA is solvable (math or text), provide the answer.
+2. If the CAPTCHA is solvable (math, text, or letters in an image), provide the answer. IF A SCREENSHOT IS PROVIDED, LOOK AT IT TO EXTRACT THE MATH PROBLEM OR TEXT.
 
 3. Identify the CSS selector for:
    - The input field where the answer should be typed
@@ -334,9 +351,13 @@ RESPONSE FORMAT (JSON only, no markdown):
 If you cannot solve it, set answer to null and confidence to 0."""
 
         try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-            logger.info("🧠 AI CAPTCHA Solver: Analyzing page...")
-            response = requests.post(self.api_url, json=payload, timeout=30)
+            model_to_use = "llava" if base64_image else self.model
+            payload = {"model": model_to_use, "prompt": prompt, "stream": False, "format": "json"}
+            if base64_image:
+                payload["images"] = [base64_image]
+                
+            logger.info(f"🧠 AI CAPTCHA Solver: Analyzing page with {model_to_use} (Vision={'Yes' if base64_image else 'No'})...")
+            response = requests.post(self.api_url, json=payload, timeout=60)
             result = response.json().get("response", "{}")
             if isinstance(result, str):
                 parsed = json.loads(result)

@@ -40,7 +40,7 @@ Write-Host "       (Output will be saved to .\output)" -ForegroundColor Gray
 
 # Use docker compose run
 # We map current folder keys if needed, but for now just run
-docker compose run --rm phishhunter $url --regions $regions
+docker compose run --rm --service-ports analyzer $url --regions $regions
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host " [4/4] Analysis Complete." -ForegroundColor Green
