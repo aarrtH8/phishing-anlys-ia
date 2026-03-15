@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import hashlib
+import os
 import re
 import time
 import random
@@ -93,12 +94,36 @@ class BrowserManager:
     async def start(self, locale: str = "en-US", timezone_id: str = "America/New_York"):
         """Initializes Playwright and launches the browser with stealth."""
         self.playwright = await async_playwright().start()
-        
+
+        # Validate DISPLAY is accessible (headed mode requires Xvfb inside Docker).
+        # Fall back gracefully to headless if the X server is unavailable.
+        use_headless = self.headless
+        if not use_headless:
+            display = os.environ.get("DISPLAY", "")
+            if display:
+                try:
+                    import subprocess as _sp
+                    result = _sp.run(
+                        ["xdpyinfo", "-display", display],
+                        capture_output=True, timeout=3
+                    )
+                    if result.returncode != 0:
+                        logger.warning(
+                            f"DISPLAY={display} not accessible — falling back to headless mode "
+                            f"(xdpyinfo returned {result.returncode})"
+                        )
+                        use_headless = True
+                except Exception as e:
+                    logger.warning(f"Could not verify DISPLAY: {e} — continuing as requested")
+            else:
+                logger.warning("DISPLAY env var not set — falling back to headless mode")
+                use_headless = True
+
         # We MUST run in headed mode (headless=False) because Cloudflare blocks
         # traditional headless mode by checking WebGL vendor and Canvas fingerprints.
         # Since we use XVFB in docker, headed mode works perfectly in the background.
         self.browser = await self.playwright.chromium.launch(
-            headless=False, 
+            headless=use_headless,
             slow_mo=100, 
             args=[
                 "--disable-blink-features=AutomationControlled",
@@ -145,11 +170,54 @@ class BrowserManager:
         self.page.on("response", self._on_response)
 
     async def _apply_stealth(self, context: BrowserContext):
-        """Deprecated. Native JS patches are removed in favor of playwright-stealth."""
-        pass
+        """Apply low-level JS patches that playwright-stealth may miss."""
+        stealth_script = """
+        // Remove navigator.webdriver flag (most critical detection vector)
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+
+        // Spoof plugins / mimeTypes (headless has 0 plugins)
+        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+        Object.defineProperty(navigator, 'mimeTypes', {get: () => [1, 2, 3]});
+
+        // Realistic language list
+        Object.defineProperty(navigator, 'languages', {get: () => ['fr-FR', 'fr', 'en-US', 'en']});
+
+        // Chrome runtime object expected by many fingerprint checks
+        if (!window.chrome) {
+            window.chrome = {runtime: {}, loadTimes: function(){}, csi: function(){}, app: {}};
+        }
+
+        // Fake notification permission (real browsers have this)
+        const originalQuery = window.navigator.permissions ? window.navigator.permissions.query.bind(window.navigator.permissions) : null;
+        if (originalQuery) {
+            window.navigator.permissions.query = (parameters) =>
+                parameters.name === 'notifications'
+                    ? Promise.resolve({state: Notification.permission})
+                    : originalQuery(parameters);
+        }
+
+        // Remove CDP-specific properties left by Playwright
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+        """
+        await context.add_init_script(stealth_script)
 
     async def _on_request(self, request: Request):
-        pass
+        """Log outgoing POST requests (form submissions, XHR data exfiltration)."""
+        if request.method in ("POST", "PUT"):
+            try:
+                post_data = request.post_data or ""
+                if post_data and len(post_data) < 8192:
+                    self.network_log.append({
+                        "url": request.url,
+                        "type": "post_submission",
+                        "method": request.method,
+                        "content": post_data.encode("utf-8", errors="replace"),
+                        "headers": dict(request.headers),
+                    })
+            except Exception:
+                pass
 
     async def _on_response(self, response: Response):
         """Callback for network responses. Captures chain and files."""
@@ -1075,11 +1143,26 @@ class BrowserManager:
         # Initial AI Pattern Detection
         logger.info("🤖 AI: Analyzing initial page for phishing patterns...")
         initial_patterns = self.llm.detect_phishing_patterns(init_html, page.url)
-        logger.info(f"🤖 AI Initial Analysis: Suspicion={initial_patterns.get('suspicion_score', '?')}%, Patterns={initial_patterns.get('detected_patterns', [])}")
-        
+        initial_score = initial_patterns.get('suspicion_score', 0)
+        is_legit = initial_patterns.get('is_legitimate_site', False)
+        logger.info(f"🤖 AI Initial Analysis: Suspicion={initial_score}%, Légitime={is_legit}, Patterns={initial_patterns.get('detected_patterns', [])}")
+
+        # If AI immediately identifies a legitimate site with very low suspicion, stop interaction
+        if is_legit and initial_score < 15:
+            journey_log.append({
+                "step": "step_00_initial",
+                "description": f"Page initiale — site légitime détecté (suspicion: {initial_score}%)",
+                "screenshot": await page.screenshot(full_page=True),
+                "url": page.url,
+                "html": init_html,
+                "ai_patterns": initial_patterns
+            })
+            logger.info("✅ Site identifié comme légitime par l'IA — exploration minimale.")
+            return journey_log
+
         journey_log.append({
             "step": "step_00_initial",
-            "description": f"Initial Page Load (AI Suspicion: {initial_patterns.get('suspicion_score', '?')}%)",
+            "description": f"Page initiale (suspicion IA: {initial_score}%)",
             "screenshot": await page.screenshot(full_page=True),
             "url": page.url,
             "html": init_html,

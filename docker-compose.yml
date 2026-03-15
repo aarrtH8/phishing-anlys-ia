@@ -16,5 +16,23 @@ services:
     environment:
       - DISPLAY=:99
       - OLLAMA_HOST=http://host.docker.internal:11434
+      - SCREEN_WIDTH=1920
+      - SCREEN_HEIGHT=1080
+      - SCREEN_DEPTH=24
     stdin_open: true # Keep container alive
     tty: true
+    # Resource limits — prevent a single scan from exhausting the host
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 512m
+    # Health check: verify NoVNC is serving (port 6080) after 30s startup
+    healthcheck:
+      test: ["CMD", "bash", "-c", "ss -lnt | grep -q ':6080' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: "no"

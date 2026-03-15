@@ -32,7 +32,7 @@ def validate_url(url: str) -> str:
     return url
 
 
-async def analyze_phishing_url_region(url: str, headless: bool, region_code: str, output_dir: str):
+async def analyze_phishing_url_region(url: str, headless: bool, region_code: str, output_dir: str, model: str = "mistral"):
     # Map regions to loc/tz
     REGIONS = {
         "US": {"locale": "en-US", "timezone": "America/New_York"},
@@ -48,7 +48,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
     java_analyzer = JavaForensics()
     js_analyzer = JSAnalysis()
     visual_analyzer = VisualAnalysis()
-    llm = LLMAnalyzer(model="mistral")
+    llm = LLMAnalyzer(model=model)
 
     report = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -93,6 +93,13 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
         report["redirect_chain"] = result["redirect_chain"]
         report["links"] = result.get("links", [])
         report["inputs"] = result.get("inputs", [])
+        # Keep a sanitised copy of the network log in the report for risk scoring
+        # (bytes content is stripped to avoid JSON serialization issues)
+        report["network_log"] = [
+            {k: (v.decode("utf-8", errors="replace")[:500] if isinstance(v, (bytes, bytearray)) else v)
+             for k, v in entry.items() if k != "headers"}
+            for entry in result.get("network_log", [])
+        ]
 
         # Network Artifacts
         network_log = result["network_log"]
@@ -163,7 +170,7 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
     return report
 
 
-def generate_final_report(consolidated_data, llm_summary, output_dir: str):
+def generate_final_report(consolidated_data, llm_summary, output_dir: str, model: str = "mistral"):
     md = "# PhishHunter Final Forensic Report\n\n"
     md += f"**Target**: `{consolidated_data['target_url']}`\n"
     md += f"**Scan Time**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
@@ -214,15 +221,49 @@ def generate_final_report(consolidated_data, llm_summary, output_dir: str):
                 md += " ⚠️ AUTO-SIGNÉ"
             md += "\n\n"
 
+        # URLScan.io
+        urlscan = ti.get("urlscan") or {}
+        if urlscan.get("found") and not urlscan.get("skipped"):
+            malicious_flags = urlscan.get("malicious_flags", 0)
+            flag_str = f"🔴 {malicious_flags} scan(s) malicieux" if malicious_flags else "✅ Aucun flag malicieux"
+            md += f"**URLScan.io**: {flag_str} sur {urlscan.get('total_prior_scans', 0)} scan(s) historiques\n"
+            if urlscan.get("recent_scans"):
+                latest = urlscan["recent_scans"][0]
+                if latest.get("report_url"):
+                    md += f"  Dernier rapport: [{latest['scan_date'][:10]}]({latest['report_url']})\n"
+            md += "\n"
+        elif urlscan.get("found") is False:
+            md += "**URLScan.io**: Aucun scan historique trouvé pour ce domaine\n\n"
+
+        # IP / ASN info
+        ip_info = ti.get("ip_info") or {}
+        if ip_info and not ip_info.get("error"):
+            flags = []
+            if ip_info.get("is_proxy"):
+                flags.append("⚠️ Proxy/VPN")
+            if ip_info.get("is_hosting"):
+                flags.append("⚠️ Hébergement dédié")
+            flag_str = " ".join(flags) if flags else "✅"
+            md += (f"**Infrastructure**: IP `{ip_info.get('ip')}` — "
+                   f"{ip_info.get('country', '?')} — "
+                   f"{ip_info.get('isp', '?')} — "
+                   f"ASN: `{ip_info.get('asn', '?')}` {flag_str}\n\n")
+
     md += "## AI Forensic Analysis\n"
     md += f"{llm_summary}\n\n"
+
+    # Network IOC section
+    network_ioc = consolidated_data.get("network_ioc_analysis", "")
+    if network_ioc:
+        md += "## Analyse des Artefacts Réseau & IOCs\n"
+        md += f"{network_ioc}\n\n"
 
     md += "## Deep Agentic Analysis (User Journey)\n"
     md += ("The automated engine performed a deep dive, simulating a victim's complete path to the payload. "
            "Below is the step-by-step analysis performed by the AI Agent.\n\n")
 
     ref_region = consolidated_data["regions"][0]
-    llm = LLMAnalyzer(model="mistral")
+    llm = LLMAnalyzer(model=model)
 
     if ref_region.get("interaction_journey"):
         steps = ref_region["interaction_journey"]
@@ -372,7 +413,7 @@ def main():
     # 2. Browser Analysis per region
     results = []
     for region in regions:
-        res = asyncio.run(analyze_phishing_url_region(target_url, not args.visible, region, output_dir))
+        res = asyncio.run(analyze_phishing_url_region(target_url, not args.visible, region, output_dir, model=args.model))
         results.append(res)
 
     # 3. Risk Score
@@ -391,12 +432,21 @@ def main():
     with open(os.path.join(output_dir, "consolidated_data.json"), "w") as f:
         json.dump(consolidated, f, indent=4)
 
-    # 5. AI Summary
+    # 5. AI Summary + network IOC analysis
     llm = LLMAnalyzer(model=args.model)
     summary = llm.analyze_report(primary_result) if results else "No analysis data captured."
 
+    # Network artifact / IOC analysis (uses all regions' network logs)
+    all_network_logs = []
+    all_redirects = []
+    for r in results:
+        all_network_logs.extend(r.get("network_log") or [])
+        all_redirects.extend(r.get("redirect_chain") or [])
+    network_ioc_analysis = llm.analyze_network_artifacts(all_network_logs, all_redirects) if results else ""
+    consolidated["network_ioc_analysis"] = network_ioc_analysis
+
     # 6. Generate Markdown Report
-    generate_final_report(consolidated, summary, output_dir)
+    generate_final_report(consolidated, summary, output_dir, model=args.model)
 
     # 7. Rename folder to brand name
     try:

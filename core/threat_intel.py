@@ -35,6 +35,8 @@ class ThreatIntelligence:
             "virustotal": None,
             "whois": None,
             "ssl": None,
+            "urlscan": None,
+            "ip_info": None,
         }
 
         if self.vt_api_key:
@@ -48,6 +50,12 @@ class ThreatIntelligence:
 
         logger.info(f"[ThreatIntel] SSL certificate check for: {domain}")
         result["ssl"] = self._check_ssl(domain)
+
+        logger.info(f"[ThreatIntel] URLScan.io lookup for: {url}")
+        result["urlscan"] = self._check_urlscan(url, domain)
+
+        logger.info(f"[ThreatIntel] IP/DNS geolocation for: {domain}")
+        result["ip_info"] = self._check_ip_info(domain)
 
         return result
 
@@ -69,9 +77,10 @@ class ThreatIntelligence:
 
             analysis_id = resp.json()["data"]["id"]
 
-            # Poll for result (max 5 attempts, 3s apart)
-            for attempt in range(5):
-                time.sleep(3)
+            # Poll for result — exponential backoff, up to 8 attempts (~60s max)
+            for attempt in range(8):
+                wait = min(3 * (2 ** attempt), 30)  # 3, 6, 12, 24, 30, 30, 30, 30
+                time.sleep(wait)
                 resp2 = requests.get(
                     f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
                     headers=headers,
@@ -86,6 +95,15 @@ class ThreatIntelligence:
                     total = sum(stats.values()) or 1
                     malicious = stats.get("malicious", 0)
                     suspicious = stats.get("suspicious", 0)
+                    # Also fetch per-engine verdicts for the top flaggers
+                    top_engines = []
+                    results_dict = data["attributes"].get("results", {})
+                    for engine, verdict in results_dict.items():
+                        cat = verdict.get("category", "")
+                        if cat in ("malicious", "suspicious"):
+                            top_engines.append(f"{engine}: {verdict.get('result', cat)}")
+                        if len(top_engines) >= 5:
+                            break
                     return {
                         "malicious": malicious,
                         "suspicious": suspicious,
@@ -94,12 +112,96 @@ class ThreatIntelligence:
                         "total": total,
                         "detection_rate": round((malicious + suspicious) / total * 100, 1),
                         "permalink": f"https://www.virustotal.com/gui/url/{analysis_id}",
+                        "top_detections": top_engines,
                     }
 
-            return {"error": "VT analysis timed out (not completed after 5 attempts)"}
+            return {"error": "VT analysis timed out (not completed after 8 attempts)"}
         except Exception as e:
             logger.error(f"[ThreatIntel] VirusTotal error: {e}")
             return {"error": str(e)}
+
+    # ──────────────────────────────────────────────────────────────
+    # URLScan.io  (public API — no key required for search)
+    # ──────────────────────────────────────────────────────────────
+    def _check_urlscan(self, url: str, domain: str) -> dict:
+        """Query URLScan.io search API for prior scans of this domain."""
+        try:
+            search_url = f"https://urlscan.io/api/v1/search/?q=domain:{domain}&size=5"
+            resp = requests.get(search_url, timeout=10,
+                                headers={"User-Agent": "PhishHunter/1.0"})
+            if resp.status_code != 200:
+                return {"skipped": True, "reason": f"HTTP {resp.status_code}"}
+            data = resp.json()
+            results = data.get("results", [])
+            if not results:
+                return {"found": False, "domain": domain}
+
+            # Summarise most recent scans
+            scans = []
+            for r in results[:5]:
+                page = r.get("page", {})
+                verdicts = r.get("verdicts", {})
+                scans.append({
+                    "url": page.get("url", ""),
+                    "domain": page.get("domain", ""),
+                    "ip": page.get("ip", ""),
+                    "country": page.get("country", ""),
+                    "malicious": verdicts.get("overall", {}).get("malicious", False),
+                    "score": verdicts.get("urlscan", {}).get("score", 0),
+                    "tags": verdicts.get("urlscan", {}).get("tags", []),
+                    "scan_date": r.get("task", {}).get("time", ""),
+                    "report_url": r.get("result", ""),
+                })
+
+            malicious_count = sum(1 for s in scans if s["malicious"])
+            return {
+                "found": True,
+                "domain": domain,
+                "total_prior_scans": data.get("total", 0),
+                "recent_scans": scans,
+                "malicious_flags": malicious_count,
+            }
+        except Exception as e:
+            logger.warning(f"[ThreatIntel] URLScan.io error: {e}")
+            return {"skipped": True, "reason": str(e)}
+
+    # ──────────────────────────────────────────────────────────────
+    # IP / DNS geolocation  (ip-api.com — free, no key)
+    # ──────────────────────────────────────────────────────────────
+    def _check_ip_info(self, domain: str) -> dict:
+        """Resolve domain to IP and get geolocation + ASN via ip-api.com."""
+        try:
+            ip = socket.gethostbyname(domain)
+        except Exception:
+            return {"error": f"DNS resolution failed for {domain}"}
+
+        try:
+            resp = requests.get(
+                f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,regionName,"
+                f"city,isp,org,as,hosting,proxy,mobile",
+                timeout=8,
+            )
+            if resp.status_code != 200:
+                return {"ip": ip, "error": f"ip-api HTTP {resp.status_code}"}
+            data = resp.json()
+            if data.get("status") != "success":
+                return {"ip": ip, "error": "ip-api query failed"}
+            return {
+                "ip": ip,
+                "country": data.get("country", ""),
+                "country_code": data.get("countryCode", ""),
+                "region": data.get("regionName", ""),
+                "city": data.get("city", ""),
+                "isp": data.get("isp", ""),
+                "org": data.get("org", ""),
+                "asn": data.get("as", ""),
+                "is_hosting": data.get("hosting", False),
+                "is_proxy": data.get("proxy", False),
+                "is_mobile": data.get("mobile", False),
+            }
+        except Exception as e:
+            logger.warning(f"[ThreatIntel] IP info error for {ip}: {e}")
+            return {"ip": ip, "error": str(e)}
 
     # ──────────────────────────────────────────────────────────────
     # RDAP / Whois
@@ -269,6 +371,24 @@ def compute_risk_score(report_data: dict, threat_intel: dict = None) -> dict:
     factors = []
     ti = threat_intel or {}
 
+    # ── Legitimacy fast-exit: well-known old domain with zero VT detections ──
+    # Avoid false positives on legitimate sites (e.g., anthropic.com, google.com)
+    whois_pre = ti.get("whois") or {}
+    vt_pre = ti.get("virustotal") or {}
+    age_pre = whois_pre.get("age_days")
+    vt_malicious_pre = vt_pre.get("malicious", 0) if not vt_pre.get("skipped") and not vt_pre.get("error") else None
+    urlscan_pre = ti.get("urlscan") or {}
+    if (
+        age_pre is not None and age_pre > 365           # domain > 1 year old
+        and (vt_malicious_pre is None or vt_malicious_pre == 0)  # no VT flags
+        and not urlscan_pre.get("malicious_flags", 0)   # no URLScan flags
+        and not (ti.get("ssl") or {}).get("is_self_signed")      # valid SSL
+    ):
+        # Cap the maximum possible score at 40 for clearly legitimate-looking domains
+        _legitimacy_cap = 40
+    else:
+        _legitimacy_cap = 100
+
     # ── VirusTotal ──
     vt = ti.get("virustotal") or {}
     if not vt.get("skipped") and not vt.get("error"):
@@ -386,7 +506,46 @@ def compute_risk_score(report_data: dict, threat_intel: dict = None) -> dict:
         score += 10
         factors.append(f"Usurpation visuelle: {visual['brand_detected']} (+10)")
 
-    score = min(100, score)
+    # ── URLScan.io ──
+    urlscan = ti.get("urlscan") or {}
+    if urlscan.get("found") and not urlscan.get("skipped"):
+        malicious_flags = urlscan.get("malicious_flags", 0)
+        if malicious_flags >= 2:
+            score += 20
+            factors.append(f"URLScan.io: {malicious_flags} scan(s) malicieux (+20)")
+        elif malicious_flags == 1:
+            score += 10
+            factors.append(f"URLScan.io: 1 scan malicieux (+10)")
+
+    # ── IP/ASN reputation ──
+    ip_info = ti.get("ip_info") or {}
+    if ip_info and not ip_info.get("error"):
+        if ip_info.get("is_proxy"):
+            score += 10
+            factors.append(f"IP derrière un proxy/VPN ({ip_info.get('ip')}) (+10)")
+        if ip_info.get("is_hosting"):
+            score += 5
+            factors.append(f"IP hébergement dédié ({ip_info.get('isp', '')}) (+5)")
+        # High-risk country codes (often used for bulletproof hosting)
+        high_risk_cc = {"RU", "CN", "KP", "IR", "NG", "RO", "UA", "BY"}
+        cc = ip_info.get("country_code", "")
+        if cc in high_risk_cc:
+            score += 8
+            factors.append(f"IP dans pays à risque élevé: {ip_info.get('country', cc)} (+8)")
+
+    # ── POST submissions detected (credential exfiltration) ──
+    post_submissions = [
+        e for r in report_data.get("regions", []) if isinstance(r, dict)
+        for e in (r.get("network_log") or [])
+        if isinstance(e, dict) and e.get("type") == "post_submission"
+    ]
+    if post_submissions:
+        score += 15
+        factors.append(f"{len(post_submissions)} soumission(s) POST détectée(s) — exfiltration probable (+15)")
+
+    score = min(_legitimacy_cap, score)
+    if _legitimacy_cap < 100 and score == _legitimacy_cap:
+        factors.append(f"Score plafonné à {_legitimacy_cap} (domaine ancien, aucune détection VT/URLScan)")
 
     if score >= 75:
         level = "critical"

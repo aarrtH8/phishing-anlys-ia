@@ -5,6 +5,8 @@
 
 let scansData = [];
 let scanPollingInterval = null;
+let _scanOutputOffset = 0;   // tracks how many chars we've already rendered
+let _scanCardBuilt = false;  // true once the status card HTML shell is in the DOM
 
 function navigate(hash) { window.location.hash = hash; }
 
@@ -507,6 +509,9 @@ async function showScanForm() {
             <div id="scan-status-area"></div>
         </div>`;
 
+    // Reset incremental terminal state for fresh view
+    _scanCardBuilt = false;
+    _scanOutputOffset = 0;
     runPreflight();
     loadVtStatus();
     checkScanStatus();
@@ -643,13 +648,16 @@ async function launchScan() {
 
 function startScanPolling() {
     if (scanPollingInterval) clearInterval(scanPollingInterval);
+    _scanOutputOffset = 0;
+    _scanCardBuilt = false;
     scanPollingInterval = setInterval(checkScanStatus, 2000);
     checkScanStatus();
 }
 
 async function checkScanStatus() {
     try {
-        const res = await fetch('/api/scan/status');
+        const url = `/api/scan/status?offset=${_scanOutputOffset}`;
+        const res = await fetch(url);
         const data = await res.json();
         renderScanStatus(data);
         if (!data.running && scanPollingInterval) {
@@ -671,25 +679,62 @@ async function stopScan() {
 
 function renderScanStatus(data) {
     const area = document.getElementById('scan-status-area');
-    if (!area || (!data.url && !data.output)) { if (area) area.innerHTML = ''; return; }
+    if (!area) return;
+
+    // Clear area if no scan has ever run
+    if (!data.url && !data.output) { area.innerHTML = ''; _scanCardBuilt = false; return; }
+
     const running = data.running;
-    area.innerHTML = `
-        <div class="form-card" style="margin-top:1.5rem;">
-            <div class="terminal-header">
-                <div class="terminal-dot ${running ? '' : 'stopped'}"></div>
-                <span>${running ? 'En cours...' : (data.return_code === 0 ? 'Terminé' : 'Erreur')}</span>
-                ${data.url ? `<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--text-muted)">${escapeHtml(extractDomain(data.url))}</span>` : ''}
-            </div>
-            <div class="terminal-output">${colorizeTerminal(data.output || 'En attente...')}</div>
-            <div style="display:flex;gap:0.5rem;margin-top:1rem;">
-                ${running ? '<button class="btn btn-secondary" onclick="stopScan()" style="flex:1;">Arrêter le scan</button>' : ''}
-                ${running ? '<button class="btn btn-secondary" onclick="window.open(\'http://localhost:6080/vnc.html\', \'_blank\')" style="flex:1; border-color: var(--gold); color: var(--gold);">👀 Voir le Navigateur (VNC)</button>' : ''}
-                ${!running && data.return_code === 0 ? '<button class="btn btn-primary" style="flex:1;" onclick="navigate(\'#dashboard\')">Voir les résultats</button>' : ''}
-                ${!running && data.return_code !== null && data.return_code !== 0 ? '<button class="btn btn-primary" style="flex:1;" onclick="launchScan()">Relancer</button>' : ''}
-            </div>
-        </div>`;
-    const t = area.querySelector('.terminal-output');
-    if (t) t.scrollTop = t.scrollHeight;
+
+    // Build the card shell once — avoid full re-renders which cause flicker
+    if (!_scanCardBuilt) {
+        area.innerHTML = `
+            <div class="form-card" style="margin-top:1.5rem;">
+                <div class="terminal-header" id="term-header">
+                    <div class="terminal-dot" id="term-dot"></div>
+                    <span id="term-status-label"></span>
+                    <span id="term-domain" style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--text-muted)"></span>
+                </div>
+                <div class="terminal-output" id="term-output"></div>
+                <div id="term-actions" style="display:flex;gap:0.5rem;margin-top:1rem;"></div>
+            </div>`;
+        _scanCardBuilt = true;
+        _scanOutputOffset = 0;
+    }
+
+    // Update status label + dot
+    const dot = document.getElementById('term-dot');
+    const label = document.getElementById('term-status-label');
+    const domainEl = document.getElementById('term-domain');
+    if (dot) dot.className = `terminal-dot${running ? '' : ' stopped'}`;
+    if (label) label.textContent = running ? 'En cours...' : (data.return_code === 0 ? 'Terminé ✅' : 'Erreur ❌');
+    if (domainEl && data.url) domainEl.textContent = extractDomain(data.url);
+
+    // Append only new output (incremental — no flicker)
+    const termEl = document.getElementById('term-output');
+    if (termEl && data.output) {
+        const newText = data.output; // new chars since last offset
+        if (newText.length > 0) {
+            const span = document.createElement('span');
+            span.innerHTML = colorizeTerminal(newText);
+            termEl.appendChild(span);
+            termEl.scrollTop = termEl.scrollHeight;
+            _scanOutputOffset += newText.length;
+        }
+    }
+
+    // Update action buttons only when state changes
+    const actionsEl = document.getElementById('term-actions');
+    if (actionsEl) {
+        const newActions = [
+            running ? '<button class="btn btn-secondary" onclick="stopScan()" style="flex:1;">Arrêter le scan</button>' : '',
+            running ? '<button class="btn btn-secondary" onclick="window.open(\'http://localhost:6080/vnc_lite.html\', \'_blank\')" style="flex:1; border-color: var(--gold); color: var(--gold);">👀 Voir le Navigateur (VNC)</button>' : '',
+            !running && data.return_code === 0 ? '<button class="btn btn-primary" style="flex:1;" onclick="navigate(\'#dashboard\')">Voir les résultats</button>' : '',
+            !running && data.return_code !== null && data.return_code !== 0 ? '<button class="btn btn-primary" style="flex:1;" onclick="launchScan()">Relancer</button>' : '',
+        ].join('');
+        if (actionsEl.innerHTML !== newActions) actionsEl.innerHTML = newActions;
+    }
+
     const btn = document.getElementById('btn-launch');
     if (btn && running) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Scan en cours...'; }
 }
