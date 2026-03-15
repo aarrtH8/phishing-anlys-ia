@@ -11,6 +11,8 @@ services:
       - ./output:/app/output
     extra_hosts:
       - "host.docker.internal:host-gateway" # Access host services (Ollama)
+    env_file:
+      - .env
     environment:
       - DISPLAY=:99
       - OLLAMA_HOST=http://host.docker.internal:11434

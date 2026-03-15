@@ -16,6 +16,23 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 SCAN_SCRIPT = os.path.join(BASE_DIR, "scan.ps1")
 
+
+def _load_dotenv():
+    """Load .env file into os.environ without requiring python-dotenv."""
+    env_path = os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            os.environ.setdefault(key.strip(), val.strip())
+
+
+_load_dotenv()
+
 app = Flask(__name__,
             template_folder=os.path.join(os.path.dirname(__file__), "templates"),
             static_folder=os.path.join(os.path.dirname(__file__), "static"))
@@ -43,7 +60,7 @@ def index():
 
 @app.route("/api/scans")
 def list_scans():
-    """List all scan result folders with metadata."""
+    """List all scan result folders with metadata. Supports ?q= keyword filter."""
     scans = []
     if not os.path.isdir(OUTPUT_DIR):
         return jsonify(scans)
@@ -77,20 +94,45 @@ def list_scans():
                     ts = data["regions"][0].get("timestamp", "")
                     if ts:
                         scan_info["date"] = ts
-                    # Detect threat level from report content
-                    region_data = data["regions"][0]
-                    inputs_count = len(region_data.get("inputs", []))
-                    files_count = len(region_data.get("files_extracted", []))
-                    redirects = len(region_data.get("redirect_chain", []))
-                    obfuscated = sum(1 for f in region_data.get("files_extracted", [])
-                                     if f.get("analysis", {}).get("obfuscation_detected"))
-
-                    if obfuscated > 0 or inputs_count > 2 or redirects > 3:
-                        scan_info["threat_level"] = "high"
-                    elif inputs_count > 0 or redirects > 1:
-                        scan_info["threat_level"] = "medium"
+                    # Use pre-computed risk_score if available, else heuristic fallback
+                    risk = data.get("risk_score", {})
+                    if risk and risk.get("level"):
+                        level_map = {"critical": "high", "high": "high", "medium": "medium", "low": "low"}
+                        scan_info["threat_level"] = level_map.get(risk["level"], "unknown")
+                        scan_info["risk_score"] = risk.get("score", 0)
+                        scan_info["risk_level"] = risk.get("level", "unknown")
+                        scan_info["risk_factors"] = risk.get("factors", [])
                     else:
-                        scan_info["threat_level"] = "low"
+                        region_data = data["regions"][0]
+                        inputs_count = len(region_data.get("inputs", []))
+                        redirects = len(region_data.get("redirect_chain", []))
+                        obfuscated = sum(1 for f in region_data.get("files_extracted", [])
+                                         if f.get("analysis", {}).get("obfuscation_detected"))
+                        if obfuscated > 0 or inputs_count > 2 or redirects > 3:
+                            scan_info["threat_level"] = "high"
+                        elif inputs_count > 0 or redirects > 1:
+                            scan_info["threat_level"] = "medium"
+                        else:
+                            scan_info["threat_level"] = "low"
+                        scan_info["risk_score"] = 0
+                        scan_info["risk_level"] = scan_info["threat_level"]
+                        scan_info["risk_factors"] = []
+
+                    # Threat Intel summary for cards
+                    ti = data.get("threat_intel", {})
+                    if ti:
+                        whois = ti.get("whois") or {}
+                        vt = ti.get("virustotal") or {}
+                        ssl_d = ti.get("ssl") or {}
+                        scan_info["ti_summary"] = {
+                            "domain_age_days": whois.get("age_days"),
+                            "is_very_young": whois.get("is_very_young", False),
+                            "vt_malicious": vt.get("malicious") if not vt.get("skipped") and not vt.get("error") else None,
+                            "vt_total": vt.get("total"),
+                            "ssl_valid": ssl_d.get("valid"),
+                            "ssl_issuer": ssl_d.get("issuer", ""),
+                            "ssl_self_signed": ssl_d.get("is_self_signed", False),
+                        }
             except Exception:
                 pass
 
@@ -111,6 +153,13 @@ def list_scans():
 
     # Sort by date descending
     scans.sort(key=lambda s: s.get("date", ""), reverse=True)
+
+    # Optional keyword filter
+    q = request.args.get("q", "").lower().strip()
+    if q:
+        scans = [s for s in scans if q in (s.get("target_url") or "").lower()
+                 or q in (s.get("folder") or "").lower()]
+
     return jsonify(scans)
 
 
@@ -185,14 +234,18 @@ def preflight():
     except Exception:
         pass
 
-    # Check Ollama
-    if checks["docker"]:
-        try:
-            import urllib.request
-            req = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
-            checks["ollama"] = req.status == 200
-        except Exception:
-            pass
+    # Check Ollama + list available models
+    try:
+        import urllib.request as _urllib_req
+        req = _urllib_req.urlopen("http://localhost:11434/api/tags", timeout=3)
+        if req.status == 200:
+            checks["ollama"] = True
+            raw = json.loads(req.read().decode())
+            checks["ollama_models"] = [m["name"] for m in raw.get("models", [])]
+        else:
+            checks["ollama_models"] = []
+    except Exception:
+        checks["ollama_models"] = []
 
     # Check if image exists
     if checks["docker"]:
@@ -212,6 +265,31 @@ def preflight():
     return jsonify(checks)
 
 
+@app.route("/api/vt-status")
+def vt_status():
+    """Return VirusTotal configuration status and quota information."""
+    vt_key = os.environ.get("VT_API_KEY", "").strip()
+    configured = bool(vt_key)
+
+    # Mask key for display: show first 6 and last 4 chars
+    key_masked = None
+    if configured:
+        key_masked = vt_key[:6] + "..." + vt_key[-4:]
+
+    return jsonify({
+        "configured": configured,
+        "key_masked": key_masked,
+        "plan": "Free — Public API",
+        "quota": {
+            "rate": "4 lookups / min",
+            "daily": "500 lookups / day",
+            "monthly": "15 500 lookups / month",
+        },
+        "usage_note": "Usage restreint aux usages non-commerciaux.",
+        "upgrade_url": "https://www.virustotal.com/gui/my-apikey"
+    })
+
+
 @app.route("/api/scan", methods=["POST"])
 def launch_scan():
     """Launch a new phishing URL scan via Docker."""
@@ -223,6 +301,8 @@ def launch_scan():
     url = data.get("url", "").strip()
     regions = data.get("regions", "FR").strip()
     visible = data.get("visible", False)
+    use_vt = data.get("use_vt", True)
+    model = data.get("model", "mistral").strip() or "mistral"
 
     if not url:
         return jsonify({"error": "URL requise."}), 400
@@ -236,22 +316,22 @@ def launch_scan():
             _current_scan["return_code"] = None
 
         try:
-            # Build the docker compose command
-            # Service name is "analyzer" in docker-compose.yml
-            # The entrypoint (/start.sh) starts VNC/Xvfb, then executes "$@"
-            # So we pass "python main.py <url> --regions <regions>" as the command
-            cmd_args = ["python", "main.py", url, "--regions", regions]
+            cmd_args = ["python", "main.py", url, "--regions", regions, "--model", model]
             if visible:
                 cmd_args.append("--visible")
+            if not use_vt:
+                cmd_args.append("--no-vt")
 
             docker_cmd = [
-                "docker", "compose", "run", "--rm",
+                "docker", "compose", "run", "--rm", "--service-ports",
                 "analyzer"
             ] + cmd_args
 
             _current_scan["output"] += f"[GUI] Lancement du scan...\n"
             _current_scan["output"] += f"[GUI] URL: {url}\n"
             _current_scan["output"] += f"[GUI] Régions: {regions}\n"
+            _current_scan["output"] += f"[GUI] Modèle LLM: {model}\n"
+            _current_scan["output"] += f"[GUI] VirusTotal: {'activé' if use_vt else 'désactivé'}\n"
             _current_scan["output"] += f"[GUI] Commande: {' '.join(docker_cmd)}\n"
             _current_scan["output"] += f"[GUI] {'='*50}\n\n"
 
@@ -294,7 +374,7 @@ def launch_scan():
     thread = threading.Thread(target=run_scan, daemon=True)
     thread.start()
 
-    return jsonify({"status": "started", "url": url, "regions": regions})
+    return jsonify({"status": "started", "url": url, "regions": regions, "use_vt": use_vt})
 
 
 @app.route("/api/scan/stop", methods=["POST"])
@@ -325,6 +405,40 @@ def scan_status():
     })
 
 
+@app.route("/api/scans/<folder_name>/download/json")
+def download_scan_json(folder_name):
+    """Download the consolidated_data.json for a scan as a file attachment."""
+    folder_path = os.path.join(OUTPUT_DIR, folder_name)
+    if not os.path.isdir(folder_path):
+        abort(404)
+    json_path = os.path.join(folder_path, "consolidated_data.json")
+    if not os.path.exists(json_path):
+        abort(404)
+    return send_from_directory(
+        folder_path,
+        "consolidated_data.json",
+        as_attachment=True,
+        download_name=f"phishhunter_{folder_name}.json"
+    )
+
+
+@app.route("/api/scans/<folder_name>/download/report")
+def download_scan_report(folder_name):
+    """Download the FINAL_REPORT.md for a scan as a file attachment."""
+    folder_path = os.path.join(OUTPUT_DIR, folder_name)
+    if not os.path.isdir(folder_path):
+        abort(404)
+    report_path = os.path.join(folder_path, "FINAL_REPORT.md")
+    if not os.path.exists(report_path):
+        abort(404)
+    return send_from_directory(
+        folder_path,
+        "FINAL_REPORT.md",
+        as_attachment=True,
+        download_name=f"phishhunter_{folder_name}_report.md"
+    )
+
+
 @app.route("/api/scans/<folder_name>", methods=["DELETE"])
 def delete_scan(folder_name):
     """Delete a scan result folder."""
@@ -345,4 +459,6 @@ def delete_scan(folder_name):
 if __name__ == "__main__":
     print("  PhishHunter GUI — http://localhost:5000")
     print(f"  Reading scans from: {OUTPUT_DIR}")
+    vt_configured = bool(os.environ.get("VT_API_KEY", "").strip())
+    print(f"  VirusTotal: {'configuré' if vt_configured else 'non configuré (VT_API_KEY manquant)'}")
     app.run(host="0.0.0.0", port=5000, debug=True)

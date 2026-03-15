@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Fix NoVNC webroot path for some Debian/Ubuntu versions
-RUN ln -s /usr/share/novnc /usr/share/novnc/vnc.html || true
+RUN ln -s /usr/share/novnc/vnc_lite.html /usr/share/novnc/vnc.html || true
 
 WORKDIR /app
 

@@ -313,6 +313,12 @@ body {
     color: var(--text-muted);
 }
 
+.threat-badge.critical {
+    background: rgba(180, 0, 0, 0.1);
+    color: #b00000;
+    border: 1px solid rgba(180, 0, 0, 0.2);
+}
+
 .scan-card-domain {
     font-size: 0.95rem;
     font-weight: 700;
@@ -800,6 +806,45 @@ body {
     animation: none;
 }
 
+/* ─── Terminal line coloring ─── */
+.term-line-error  { color: var(--red);    display: block; }
+.term-line-warn   { color: var(--orange); display: block; }
+.term-line-ok     { color: var(--green);  display: block; }
+.term-line-accent { color: var(--gold);   display: block; }
+
+/* ─── Dashboard search bar ─── */
+.search-bar-wrapper {
+    position: relative;
+    margin-bottom: 1.2rem;
+}
+
+.search-bar {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.55rem 1rem 0.55rem 2.4rem;
+    font-size: 0.85rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.search-bar::placeholder { color: var(--text-muted); }
+
+.search-bar:focus { border-color: var(--gold); }
+
+.search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
 /* ─── Lightbox ─── */
 .lightbox {
     position: fixed;
@@ -967,6 +1012,233 @@ body {
 
 .hidden {
     display: none !important;
+}
+
+/* ─── VirusTotal Status Panel ─── */
+.vt-status-panel {
+    background: var(--bg);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-top: 4px;
+}
+
+.vt-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.vt-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.vt-dot.ok { background: var(--green); }
+.vt-dot.off { background: var(--text-muted); }
+
+.vt-plan {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.vt-key-masked {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.vt-quota-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.vt-quota-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 6px 8px;
+    text-align: center;
+}
+
+.vt-quota-val {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--gold);
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.2;
+}
+
+.vt-quota-lbl {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+}
+
+.vt-usage-note {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* ─── Risk Score Bar ─── */
+.risk-score-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 10px;
+}
+
+.risk-bar-track {
+    flex: 1;
+    height: 5px;
+    background: var(--border-light);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.risk-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.risk-score-value {
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ─── TI Badges on Cards ─── */
+.ti-badges-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 6px 0 4px;
+}
+
+.ti-badge {
+    font-size: 0.67rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.ti-badge.danger {
+    background: var(--red-bg);
+    color: var(--red);
+}
+
+.ti-badge.warning {
+    background: var(--orange-bg);
+    color: var(--orange);
+}
+
+.ti-badge.ok {
+    background: var(--green-bg);
+    color: var(--green);
+}
+
+/* ─── Risk Gauge (Sidebar) ─── */
+.risk-gauge-container {
+    margin-bottom: 8px;
+}
+
+.risk-gauge-score {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+}
+
+.risk-gauge-max {
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0.6;
+    margin-left: 2px;
+}
+
+.risk-factors-list {
+    list-style: none;
+    margin-top: 8px;
+    padding: 0;
+}
+
+.risk-factor-item {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border-light);
+    line-height: 1.4;
+}
+
+.risk-factor-item:last-child {
+    border-bottom: none;
+}
+
+/* ─── Threat Intel Panel (Sidebar) ─── */
+.ti-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.ti-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 0;
+    gap: 6px;
+}
+
+.ti-key {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 70px;
+}
+
+.ti-val {
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+    text-align: right;
+    word-break: break-all;
+}
+
+.ti-val.danger { color: var(--red); }
+.ti-val.warning { color: var(--orange); }
+.ti-val.ok { color: var(--green); }
+.ti-val.muted { color: var(--text-muted); font-weight: 400; }
+
+.ti-separator {
+    height: 1px;
+    background: var(--border-light);
+    margin: 4px 0;
+}
+
+.ti-link {
+    font-size: 0.68rem;
+    color: var(--gold);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.ti-link:hover {
+    text-decoration: underline;
 }
 
 /* ─── Responsive ─── */
