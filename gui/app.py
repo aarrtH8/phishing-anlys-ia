@@ -210,16 +210,31 @@ def get_scan(folder_name):
 @app.route("/api/scans/<folder_name>/files/<path:filename>")
 def serve_scan_file(folder_name, filename):
     """Serve any file from a scan folder (screenshots, HTML, etc.)."""
-    folder_path = os.path.join(OUTPUT_DIR, folder_name)
-    if not os.path.isdir(folder_path):
+    import pathlib
+
+    # Prevent directory traversal: resolve both paths and check containment
+    output_real = pathlib.Path(OUTPUT_DIR).resolve()
+    folder_path = (output_real / folder_name).resolve()
+
+    # folder_name must stay inside OUTPUT_DIR
+    if not str(folder_path).startswith(str(output_real)):
+        abort(400)
+    if not folder_path.is_dir():
         abort(404)
 
     # Allow serving from dump subdirectory
     if filename.startswith("dump/"):
-        return send_from_directory(os.path.join(folder_path, "dump"),
-                                   filename[5:])
+        sub_file = filename[5:]
+        safe_path = (folder_path / "dump" / sub_file).resolve()
+        if not str(safe_path).startswith(str(folder_path)):
+            abort(400)
+        return send_from_directory(str(folder_path / "dump"), sub_file)
 
-    return send_from_directory(folder_path, filename)
+    safe_path = (folder_path / filename).resolve()
+    if not str(safe_path).startswith(str(folder_path)):
+        abort(400)
+
+    return send_from_directory(str(folder_path), filename)
 
 
 @app.route("/api/preflight")
@@ -323,7 +338,11 @@ def launch_scan():
                 cmd_args.append("--no-vt")
 
             docker_cmd = [
-                "docker", "compose", "run", "--rm", "--service-ports",
+                "docker", "compose", "run", "--rm",
+                # --service-ports exposes all mapped ports (needed for NoVNC on :6080/:5900)
+                "--service-ports",
+                # Use a unique container name per scan to avoid "already in use" conflicts
+                "--name", f"phish-scan-{datetime.now().strftime('%Y%m%d%H%M%S')}",
                 "analyzer"
             ] + cmd_args
 
@@ -395,12 +414,23 @@ def stop_scan():
 
 @app.route("/api/scan/status")
 def scan_status():
-    """Check status of the current/last scan."""
+    """Check status of the current/last scan.
+    Supports ?offset=N to return only new output lines since position N (incremental).
+    """
+    offset = request.args.get("offset", 0, type=int)
+    full_output = _current_scan["output"] or ""
+    # Return a sliding window: last 8 000 chars, or from offset if provided
+    if offset > 0 and offset < len(full_output):
+        partial = full_output[offset:]
+    else:
+        partial = full_output[-8000:]
+
     return jsonify({
         "running": _current_scan["running"],
         "url": _current_scan["url"],
         "started_at": _current_scan["started_at"],
-        "output": _current_scan["output"][-5000:] if _current_scan["output"] else "",
+        "output": partial,
+        "output_length": len(full_output),
         "return_code": _current_scan["return_code"]
     })
 

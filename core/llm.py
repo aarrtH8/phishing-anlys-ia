@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import logging
 import json
@@ -17,29 +18,66 @@ class LLMAnalyzer:
         else:
             self.api_url = base_host
 
+    def _call_ollama(self, payload: dict, timeout: int = 90, retries: int = 3) -> str:
+        """Shared Ollama call with exponential backoff and safe JSON extraction."""
+        last_err = None
+        for attempt in range(retries):
+            try:
+                resp = requests.post(self.api_url, json=payload, timeout=timeout)
+                resp.raise_for_status()
+                result = resp.json().get("response", "")
+                if isinstance(result, str):
+                    return result.strip()
+                return json.dumps(result)
+            except requests.exceptions.ConnectionError as e:
+                last_err = e
+                logger.warning(f"[LLM] Ollama unreachable (attempt {attempt+1}/{retries}): {e}")
+                time.sleep(2 ** attempt)
+            except Exception as e:
+                last_err = e
+                logger.warning(f"[LLM] Call failed (attempt {attempt+1}/{retries}): {e}")
+                time.sleep(2 ** attempt)
+        logger.error(f"[LLM] All {retries} attempts failed: {last_err}")
+        return ""
+
+    def _call_ollama_json(self, payload: dict, timeout: int = 45, retries: int = 2) -> dict | list:
+        """Like _call_ollama but parses and returns JSON, defaulting to {} on failure."""
+        payload = {**payload, "format": "json"}
+        raw = self._call_ollama(payload, timeout=timeout, retries=retries)
+        if not raw:
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            # Try to extract first JSON object/array from the string
+            import re
+            m = re.search(r'(\{.*\}|\[.*\])', raw, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group(1))
+                except Exception:
+                    pass
+            logger.warning(f"[LLM] Could not parse JSON response: {raw[:200]}")
+            return {}
+
     def analyze_javascript(self, js_code: str, filename: str) -> str:
         """Analyzes a JavaScript snippet for malicious intent."""
-        prompt = f"""
-        You are a Malware Analyst. Analyze this suspicious JavaScript file extracted from a phishing site.
+        prompt = f"""Tu es un analyste malware. Analyse ce fichier JavaScript extrait d'un site de phishing.
 
-        FILENAME: {filename}
-        CODE SNIPPET (First 4000 chars):
-        {js_code[:4000]}
+FICHIER: {filename}
+CODE (premiers 4000 caractères):
+{js_code[:4000]}
 
-        TASK:
-        1. Identify the purpose (e.g., obfuscation, redirection, fingerprinting, payload delivery).
-        2. Highlight any specific dangerous functions or logic.
-        3. Explain exactly what this script tries to do to the victim.
+TÂCHE:
+1. Identifie l'objectif (obfuscation, redirection, fingerprinting, exfiltration de données, livraison de payload).
+2. Mets en évidence les fonctions ou logiques dangereuses spécifiques.
+3. Explique exactement ce que ce script tente de faire à la victime.
+4. Indique le niveau de dangerosité: FAIBLE / MOYEN / ÉLEVÉ / CRITIQUE
 
-        Keep it concise (3-4 sentences). Réponds en français.
-        """
-        try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False}
-            response = requests.post(self.api_url, json=payload, timeout=90)
-            return response.json().get("response", "Analysis failed.").strip()
-        except Exception as e:
-            logger.error(f"JS Analysis failed: {e}")
-            return "Analysis unavailable."
+Sois concis (4-5 phrases max). Réponds en français.
+"""
+        result = self._call_ollama({"model": self.model, "prompt": prompt, "stream": False}, timeout=90)
+        return result or "Analyse indisponible."
 
     def analyze_journey_step(self, step_data: dict) -> str:
         """Analyzes a specific step in the user journey."""
@@ -62,11 +100,8 @@ class LLMAnalyzer:
         What is the attacker trying to do here? (e.g. build trust, simulate loading, extract data, redirect).
         Be very brief (1-2 sentences). Réponds en français.
         """
-        try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False}
-            response = requests.post(self.api_url, json=payload, timeout=30)
-            return response.json().get("response", "").strip()
-        except: return "Analysis skipped."
+        result = self._call_ollama({"model": self.model, "prompt": prompt, "stream": False}, timeout=30, retries=2)
+        return result or "Analyse ignorée."
 
     def analyze_report(self, report_data: dict) -> str:
         """Sends the report JSON to Ollama for a security summary."""
@@ -87,43 +122,46 @@ class LLMAnalyzer:
                 f"  OCR text snippet: {str(visual.get('ocr_text', ''))[:200]}\n"
             )
 
-        prompt = f"""
-        You are a Cybersecurity Expert analyzing a Phishing Scan.
+        # Summarise POST submissions for the report
+        post_submissions = [e for e in report_data.get("network_log", []) if e.get("type") == "post_submission"]
+        post_info = ""
+        if post_submissions:
+            post_info = f"\nSOUMISSIONS POST ({len(post_submissions)}):\n"
+            for ps in post_submissions[:5]:
+                raw = ps.get("content", b"")
+                data_str = (raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw))[:300]
+                post_info += f"  → {ps.get('url', '?')} | data: {data_str}\n"
 
-        DATA:
-        Target: {report_data.get('target_url')}
-        Redirect Chain: {len(chain)} hops.
-        Final URL: {final_url}
-        Inputs Found: {len(report_data.get('inputs', []))} (Types: {[i.get('type') for i in report_data.get('inputs', [])[:5]]})
-        {visual_info}
-        INTERACTIVE JOURNEY (Bot clicked buttons):
-        {journey_desc}
+        prompt = f"""Tu es un Expert en Cybersécurité analysant un scan de phishing complet.
 
-        ARTIFACTS:
-        {json.dumps(report_data.get('files_extracted', []), indent=2)[:1500]}
+DONNÉES:
+Cible: {report_data.get('target_url')}
+Chaîne de redirections: {len(chain)} saut(s). URL finale: {final_url}
+Champs de saisie: {len(report_data.get('inputs', []))} (types: {[i.get('type') for i in report_data.get('inputs', [])[:5]]})
+{visual_info}{post_info}
+PARCOURS INTERACTIF (simulation victime):
+{journey_desc}
 
-        TASK:
-        Write a detailed Forensic Report.
-        1. **Evidence-Based Analysis**: Cite specific steps from the 'Interactive Journey' to prove malicious intent (e.g., "After clicking 'Start', the user is redirected to...").
-        2. **Technique Explanation**: Explain *why* the obfuscation or the survey flow is effective/malicious.
-        3. **Severity**: Assessment.
+ARTEFACTS TÉLÉCHARGÉS:
+{json.dumps(report_data.get('files_extracted', []), indent=2)[:1500]}
 
-        Format as Markdown. Use bolding for key findings. Réponds en français.
-        """
+TÂCHE — Rédige un Rapport Forensique Détaillé en Markdown comprenant:
+1. **Résumé exécutif** : Nature de l'attaque, marque usurpée, objectif (collecte identifiants/CB/OTP).
+2. **Analyse des preuves** : Cite les étapes spécifiques du parcours pour prouver l'intention malveillante.
+3. **Techniques d'attaque** : Explique pourquoi les mécanismes (obfuscation, fake survey, urgence) sont efficaces.
+4. **Mapping MITRE ATT&CK** : Liste les techniques applicables (ex: T1566.002, T1056.001, T1204.001).
+5. **IOCs extraits** : Domaines, IPs, URLs de collecte identifiés.
+6. **Évaluation de la sévérité** : FAIBLE / MOYEN / ÉLEVÉ / CRITIQUE avec justification.
+7. **Recommandations** : Actions immédiates pour les victimes et équipes de sécurité.
 
-        try:
-            payload = {
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False
-            }
-            logger.info(f"Sending analysis request to Ollama (Model: {self.model})...")
-            response = requests.post(self.api_url, json=payload, timeout=60)
-            response.raise_for_status()
-            return response.json().get("response", "No response from LLM.")
-        except Exception as e:
-            logger.error(f"Ollama analysis failed: {e}")
-            return f"**Analysis Unavailable**: Could not connect to local Ollama instance ({e}). Please ensure 'ollama serve' is running."
+Utilise le gras pour les points clés. Réponds entièrement en français.
+"""
+
+        logger.info(f"[LLM] Sending forensic report analysis to Ollama (model: {self.model})...")
+        result = self._call_ollama({"model": self.model, "prompt": prompt, "stream": False}, timeout=120)
+        if result:
+            return result
+        return "**Analyse indisponible** : Ollama ne répond pas. Vérifiez que `ollama serve` est lancé."
 
     def get_next_action(self, html_snippet: str, url: str) -> dict:
         """
@@ -163,16 +201,10 @@ class LLMAnalyzer:
             "is_phishing_cta": true
         }}
         """
-        try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-            response = requests.post(self.api_url, json=payload, timeout=30)
-            result = response.json().get("response", "{}")
-            if isinstance(result, str):
-                return json.loads(result)
-            return result
-        except Exception as e:
-            logger.error(f"LLM Action Decision failed: {e}")
-            return {}
+        result = self._call_ollama_json(
+            {"model": self.model, "prompt": prompt, "stream": False}, timeout=30
+        )
+        return result if isinstance(result, dict) else {}
 
     def analyze_interactive_elements(self, elements: list, url: str) -> list:
         """
@@ -209,16 +241,10 @@ class LLMAnalyzer:
             {{"text": "Cancel", "phishing_score": 10, "ai_reason": "Exit action, not phishing"}}
         ]
         """
-        try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-            response = requests.post(self.api_url, json=payload, timeout=35)
-            result = response.json().get("response", "[]")
-            if isinstance(result, str):
-                return json.loads(result)
-            return result if isinstance(result, list) else []
-        except Exception as e:
-            logger.error(f"LLM Element Analysis failed: {e}")
-            return elements  # Return original if AI fails
+        result = self._call_ollama_json(
+            {"model": self.model, "prompt": prompt, "stream": False}, timeout=35
+        )
+        return result if isinstance(result, list) else elements
 
     def detect_phishing_patterns(self, html_content: str, url: str) -> dict:
         """
@@ -250,16 +276,12 @@ class LLMAnalyzer:
             "recommendation": "continue_exploration" or "stop_reached_payload"
         }}
         """
-        try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
-            response = requests.post(self.api_url, json=payload, timeout=30)
-            result = response.json().get("response", "{}")
-            if isinstance(result, str):
-                return json.loads(result)
+        result = self._call_ollama_json(
+            {"model": self.model, "prompt": prompt, "stream": False}, timeout=30
+        )
+        if isinstance(result, dict) and "suspicion_score" in result:
             return result
-        except Exception as e:
-            logger.error(f"LLM Pattern Detection failed: {e}")
-            return {"suspicion_score": 50, "detected_patterns": [], "recommendation": "continue_exploration"}
+        return {"suspicion_score": 50, "detected_patterns": [], "recommendation": "continue_exploration"}
 
     def extract_target_brand(self, report_data: dict) -> str:
         """
@@ -288,17 +310,13 @@ class LLMAnalyzer:
         Return ONLY the brand name as a string. No markdown. No punctuation.
         Example: VinciAutoroutes
         """
-        try:
-            payload = {"model": self.model, "prompt": prompt, "stream": False}
-            response = requests.post(self.api_url, json=payload, timeout=20)
-            brand = response.json().get("response", "Unknown").strip()
-            # Sanitize
-            import re
-            brand = re.sub(r'[^a-zA-Z0-9]', '', brand)
-            return brand if len(brand) < 30 else "Unknown"
-        except Exception as e:
-            logger.warning(f"Brand extraction failed: {e}")
+        raw = self._call_ollama({"model": self.model, "prompt": prompt, "stream": False}, timeout=20, retries=2)
+        if not raw:
             return "Unknown"
+        import re
+        brand = re.sub(r'[^a-zA-Z0-9\s\-]', '', raw).strip().split('\n')[0].strip()
+        brand = re.sub(r'\s+', '', brand)  # remove internal spaces for folder naming
+        return brand if 2 <= len(brand) < 40 else "Unknown"
 
     def solve_captcha(self, html_snippet: str, page_url: str, base64_image: str = None) -> dict:
         """
@@ -350,41 +368,23 @@ RESPONSE FORMAT (JSON only, no markdown):
 
 If you cannot solve it, set answer to null and confidence to 0."""
 
-        try:
-            model_to_use = "llava" if base64_image else self.model
-            payload = {"model": model_to_use, "prompt": prompt, "stream": False, "format": "json"}
-            if base64_image:
-                payload["images"] = [base64_image]
-                
-            logger.info(f"🧠 AI CAPTCHA Solver: Analyzing page with {model_to_use} (Vision={'Yes' if base64_image else 'No'})...")
-            response = requests.post(self.api_url, json=payload, timeout=60)
-            result = response.json().get("response", "{}")
-            if isinstance(result, str):
-                parsed = json.loads(result)
-            else:
-                parsed = result
-            
-            # Ensure required fields exist with defaults
-            return {
-                "type": parsed.get("type", "unknown"),
-                "challenge_description": parsed.get("challenge_description", ""),
-                "answer": parsed.get("answer"),
-                "confidence": parsed.get("confidence", 0),
-                "input_selector": parsed.get("input_selector", ""),
-                "submit_selector": parsed.get("submit_selector", ""),
-                "instructions": parsed.get("instructions", "Solve the CAPTCHA manually")
-            }
-        except Exception as e:
-            logger.error(f"🧠 AI CAPTCHA analysis failed: {e}")
-            return {
-                "type": "unknown",
-                "challenge_description": "",
-                "answer": None,
-                "confidence": 0,
-                "input_selector": "",
-                "submit_selector": "",
-                "instructions": "AI analysis failed. Please solve the CAPTCHA manually."
-            }
+        model_to_use = "llava" if base64_image else self.model
+        payload: dict = {"model": model_to_use, "prompt": prompt, "stream": False}
+        if base64_image:
+            payload["images"] = [base64_image]
+        logger.info(f"🧠 AI CAPTCHA Solver: analyzing with {model_to_use} (vision={'yes' if base64_image else 'no'})...")
+        parsed = self._call_ollama_json(payload, timeout=60)
+        if not isinstance(parsed, dict):
+            parsed = {}
+        return {
+            "type": parsed.get("type", "unknown"),
+            "challenge_description": parsed.get("challenge_description", ""),
+            "answer": parsed.get("answer"),
+            "confidence": int(parsed.get("confidence", 0)),
+            "input_selector": parsed.get("input_selector", ""),
+            "submit_selector": parsed.get("submit_selector", ""),
+            "instructions": parsed.get("instructions", "Résoudre le CAPTCHA manuellement.")
+        }
 
     def solve_captcha_visual(self, base64_image: str, challenge_instruction: str, grid_size: str = "3x3") -> List[int]:
         """
@@ -411,40 +411,65 @@ If you cannot solve it, set answer to null and confidence to 0."""
         If no tiles match, return: []
         """
         
-        try:
-            # Note: We assume the user has a vision model installed, e.g. 'llava' or 'llama3.2-vision'
-            # We hardcode to 'llava' for testing, or use self.model if we assume the main model is multimodal.
-            # Local users usually pull 'llava' specifically for vision.
-            vision_model = "llava" 
-            
-            payload = {
-                "model": vision_model,
-                "prompt": prompt,
-                "images": [base64_image],
-                "stream": False,
-                "format": "json"
-            }
-            logger.info(f"👁️ Vision AI: Analyzing CAPTCHA image with {vision_model}...")
-            response = requests.post(self.api_url, json=payload, timeout=60)
-            
-            if response.status_code == 404 or "model" in response.text.lower():
-                logger.warning(f"👁️ Vision model '{vision_model}' not found in Ollama. Please run 'ollama pull {vision_model}'.")
-                return []
-                
-            result = response.json().get("response", "[]")
-            
-            if isinstance(result, str):
-                tiles = json.loads(result)
-            else:
-                tiles = result
-                
-            if isinstance(tiles, list) and all(isinstance(t, int) for t in tiles):
-                logger.info(f"👁️ Vision AI suggests clicking tiles: {tiles}")
-                return tiles
-            else:
-                logger.warning(f"👁️ Vision AI returned malformed response: {result}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"👁️ Vision AI analysis failed: {e}")
-            return []
+        vision_model = "llava"
+        logger.info(f"👁️ Vision AI: solving CAPTCHA grid with {vision_model}...")
+        payload = {"model": vision_model, "prompt": prompt, "images": [base64_image], "stream": False}
+        result = self._call_ollama_json(payload, timeout=60)
+        if isinstance(result, list) and all(isinstance(t, int) for t in result):
+            # Validate tile indices are within grid bounds
+            max_tile = int(grid_size.split("x")[0]) ** 2 if "x" in grid_size else 9
+            valid = [t for t in result if 1 <= t <= max_tile]
+            logger.info(f"👁️ Vision AI suggests tiles: {valid}")
+            return valid
+        logger.warning(f"👁️ Vision AI returned unexpected response: {result}")
+        return []
+
+    # ──────────────────────────────────────────────────────────────
+    # Network Artifacts / IOC Analysis
+    # ──────────────────────────────────────────────────────────────
+    def analyze_network_artifacts(self, network_log: list, redirect_chain: list) -> str:
+        """
+        Analyse les artefacts réseau (POST submissions, JS chargés, redirections)
+        pour extraire les IOCs et identifier le schéma d'exfiltration.
+        """
+        if not network_log and not redirect_chain:
+            return ""
+
+        post_entries = [e for e in network_log if e.get("type") == "post_submission"]
+        js_entries = [e for e in network_log if e.get("type") == "js"]
+
+        post_summary = []
+        for e in post_entries[:10]:
+            content = ""
+            raw = e.get("content", b"")
+            if isinstance(raw, (bytes, bytearray)):
+                content = raw.decode("utf-8", errors="replace")[:500]
+            elif isinstance(raw, str):
+                content = raw[:500]
+            post_summary.append({"url": e.get("url", ""), "data": content})
+
+        redirect_urls = [h.get("url", "") for h in redirect_chain]
+        js_urls = [e.get("url", "") for e in js_entries[:20]]
+
+        prompt = f"""Tu es un analyste en threat intelligence. Analyse ces artefacts réseau d'un site de phishing.
+
+REDIRECTIONS ({len(redirect_chain)}):
+{json.dumps(redirect_urls[:20], indent=2)}
+
+SOUMISSIONS POST ({len(post_summary)} détectée(s)):
+{json.dumps(post_summary, indent=2)}
+
+SCRIPTS JS CHARGÉS ({len(js_urls)}):
+{json.dumps(js_urls[:20], indent=2)}
+
+TÂCHE:
+1. Identifie les domaines/IPs de collecte (endpoints de réception des données volées).
+2. Identifie les patterns d'URL suspects (trackers, redirecteurs, C2 potentiels).
+3. Extrait les IOCs (Indicators of Compromise): domaines, IPs, URLs suspectes.
+4. Map les techniques MITRE ATT&CK pertinentes (ex: T1566.002 Spearphishing Link, T1056 Input Capture).
+5. Évalue si l'infrastructure est partagée (hosting bulletproof, CDN d'abus connus).
+
+Réponds en français. Format: bullet points structurés.
+"""
+        result = self._call_ollama({"model": self.model, "prompt": prompt, "stream": False}, timeout=90)
+        return result or ""
