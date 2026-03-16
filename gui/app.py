@@ -507,8 +507,15 @@ def delete_scan(folder_name):
 # ─────────────────────────── Main ───────────────────────────
 
 if __name__ == "__main__":
-    print("  PhishHunter GUI — http://localhost:5000")
+    import sys
+    # Force UTF-8 stdout/stderr so emoji/accents in paths don't crash on Windows (cp1252 default)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    print("  PhishHunter GUI -- http://localhost:5000")
     print(f"  Reading scans from: {OUTPUT_DIR}")
     vt_configured = bool(os.environ.get("VT_API_KEY", "").strip())
-    print(f"  VirusTotal: {'configuré' if vt_configured else 'non configuré (VT_API_KEY manquant)'}")
+    vt_status = "configured" if vt_configured else "not configured (VT_API_KEY missing)"
+    print(f"  VirusTotal: {vt_status}")
     app.run(host="0.0.0.0", port=5000, debug=True)

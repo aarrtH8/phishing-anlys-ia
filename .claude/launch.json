@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "PhishHunter GUI (Flask)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-X", "utf8", "gui/app.py"],
+      "port": 5000
+    },
+    {
+      "name": "PhishHunter Docker (NoVNC)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "run", "--rm", "--service-ports", "analyzer"],
+      "port": 6080
+    }
+  ]
+}
