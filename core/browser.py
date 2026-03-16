@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import hashlib
+import os
 import re
 import time
+import random
 import urllib.request
 import speech_recognition as sr
 import base64
@@ -10,13 +12,71 @@ from pydub import AudioSegment
 from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext, Response, Request
+try:
+    from playwright_stealth import stealth_async  # playwright-stealth 1.x
+except ImportError:
+    try:
+        from playwright_stealth import Stealth  # playwright-stealth 2.x
+        async def stealth_async(page):
+            await Stealth().apply_stealth_async(page)
+    except ImportError:
+        async def stealth_async(page):
+            pass  # stealth unavailable, continue without it
 from core.llm import LLMAnalyzer
 
 
 logger = logging.getLogger(__name__)
 
+_FAKE_DATA_BY_REGION = {
+    "FR": {
+        "email": "victime@exemple.fr",
+        "password": "MotDePasse123!",
+        "tel": "0612345678",
+        "text": "Jean Dupont",
+        "name": "Jean Dupont",
+        "cc": "4532000000000000",
+        "cvv": "123",
+        "exp": "12/28",
+        "otp": "123456",
+    },
+    "DE": {
+        "email": "opfer@beispiel.de",
+        "password": "Passwort123!",
+        "tel": "01512345678",
+        "text": "Max Mustermann",
+        "name": "Max Mustermann",
+        "cc": "4532000000000000",
+        "cvv": "123",
+        "exp": "12/28",
+        "otp": "123456",
+    },
+    "JP": {
+        "email": "higaisha@example.jp",
+        "password": "Password123!",
+        "tel": "09012345678",
+        "text": "田中太郎",
+        "name": "田中太郎",
+        "cc": "4532000000000000",
+        "cvv": "123",
+        "exp": "12/28",
+        "otp": "123456",
+    },
+    "US": {
+        "email": "victim@example.com",
+        "password": "Password123!",
+        "tel": "5551234567",
+        "text": "John Doe",
+        "name": "John Doe",
+        "cc": "4532000000000000",
+        "cvv": "123",
+        "exp": "12/28",
+        "otp": "123456",
+    },
+}
+
+
 class BrowserManager:
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = True, region: str = "US"):
         self.headless = headless
         self.playwright = None
         self.browser: Optional[Browser] = None
@@ -24,82 +84,140 @@ class BrowserManager:
         self.page: Optional[Page] = None
         self.redirect_chain: List[Dict[str, Any]] = []
         self.network_log: List[Dict[str, Any]] = []
-        self.network_log: List[Dict[str, Any]] = []
         self.downloaded_files: List[Dict[str, Any]] = []
         self.llm = LLMAnalyzer() # Initialize AI for smart detection
-        
-        # Fake Data for probing
-        self.fake_data = {
-            "email": "victim@example.com",
-            "password": "Password123!",
-            "tel": "0612345678",
-            "text": "John Doe",
-            "name": "John Doe",
-            "cc": "4532000000000000",
-            "cvv": "123",
-            "exp": "12/28",
-            "otp": "123456"
-        }
+
+        # Region-localized fake data for realistic probing
+        self.fake_data = _FAKE_DATA_BY_REGION.get(region.upper(), _FAKE_DATA_BY_REGION["US"])
 
 
     async def start(self, locale: str = "en-US", timezone_id: str = "America/New_York"):
-        """Initializes Playwright and launches the browser."""
+        """Initializes Playwright and launches the browser with stealth."""
         self.playwright = await async_playwright().start()
-        # Launch Chromium.
+
+        # Validate DISPLAY is accessible (headed mode requires Xvfb inside Docker).
+        # Fall back gracefully to headless if the X server is unavailable.
+        use_headless = self.headless
+        if not use_headless:
+            display = os.environ.get("DISPLAY", "")
+            if display:
+                try:
+                    import subprocess as _sp
+                    result = _sp.run(
+                        ["xdpyinfo", "-display", display],
+                        capture_output=True, timeout=3
+                    )
+                    if result.returncode != 0:
+                        logger.warning(
+                            f"DISPLAY={display} not accessible — falling back to headless mode "
+                            f"(xdpyinfo returned {result.returncode})"
+                        )
+                        use_headless = True
+                except Exception as e:
+                    logger.warning(f"Could not verify DISPLAY: {e} — continuing as requested")
+            else:
+                logger.warning("DISPLAY env var not set — falling back to headless mode")
+                use_headless = True
+
+        # We MUST run in headed mode (headless=False) because Cloudflare blocks
+        # traditional headless mode by checking WebGL vendor and Canvas fingerprints.
+        # Since we use XVFB in docker, headed mode works perfectly in the background.
         self.browser = await self.playwright.chromium.launch(
-            headless=self.headless,
+            headless=use_headless,
             slow_mo=100, 
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
-                "--disable-setuid-sandbox"
+                "--disable-infobars",
+                "--disable-setuid-sandbox",
+                "--window-size=1280,900"
             ]
         )
         
+        # Randomize User-Agent to avoid fingeprint tracking and blacklisting
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.1; rv:121.0) Gecko/20100101 Firefox/121.0"
+        ]
+        chosen_ua = random.choice(user_agents)
+        
+        # Randomize viewport slightly
+        width = random.randint(1280, 1920)
+        height = random.randint(720, 1080)
+        
         self.context = await self.browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
+            user_agent=chosen_ua,
+            viewport={"width": width, "height": height},
             locale=locale,
             timezone_id=timezone_id,
             bypass_csp=True, 
             ignore_https_errors=True
         )
 
+        # Apply stealth at the context level if possible, or individually to pages
+        # The simplest approach is wrapping the context creation but `use_async` targets pages generally.
         self.page = await self.context.new_page()
         
         # Apply strict stealth mode to evade Cloudflare and other advanced anti-bots
+        await stealth_async(self.page)
         await self._apply_stealth(self.context)
         
         self.page.on("request", self._on_request)
         self.page.on("response", self._on_response)
 
     async def _apply_stealth(self, context: BrowserContext):
-        """Injects fallback scripts to mask automation."""
-        stealth_js = """
-            // Overwrite webdriver
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
-            // Mock chrome runtime
-            window.chrome = { runtime: {} };
-            // Mock permissions
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ? Promise.resolve({ state: Notification.permission }) : originalQuery(parameters)
-            );
-            // Mock plugins and languages
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-            // Mock WebGL
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                if (parameter === 37445) return 'Intel Inc.';
-                if (parameter === 37446) return 'Intel Iris OpenGL Engine';
-                return getParameter.apply(this, [parameter]);
-            };
+        """Apply low-level JS patches that playwright-stealth may miss."""
+        stealth_script = """
+        // Remove navigator.webdriver flag (most critical detection vector)
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+
+        // Spoof plugins / mimeTypes (headless has 0 plugins)
+        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+        Object.defineProperty(navigator, 'mimeTypes', {get: () => [1, 2, 3]});
+
+        // Realistic language list
+        Object.defineProperty(navigator, 'languages', {get: () => ['fr-FR', 'fr', 'en-US', 'en']});
+
+        // Chrome runtime object expected by many fingerprint checks
+        if (!window.chrome) {
+            window.chrome = {runtime: {}, loadTimes: function(){}, csi: function(){}, app: {}};
+        }
+
+        // Fake notification permission (real browsers have this)
+        const originalQuery = window.navigator.permissions ? window.navigator.permissions.query.bind(window.navigator.permissions) : null;
+        if (originalQuery) {
+            window.navigator.permissions.query = (parameters) =>
+                parameters.name === 'notifications'
+                    ? Promise.resolve({state: Notification.permission})
+                    : originalQuery(parameters);
+        }
+
+        // Remove CDP-specific properties left by Playwright
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
         """
-        await context.add_init_script(stealth_js)
+        await context.add_init_script(stealth_script)
 
     async def _on_request(self, request: Request):
-        pass
+        """Log outgoing POST requests (form submissions, XHR data exfiltration)."""
+        if request.method in ("POST", "PUT"):
+            try:
+                post_data = request.post_data or ""
+                if post_data and len(post_data) < 8192:
+                    self.network_log.append({
+                        "url": request.url,
+                        "type": "post_submission",
+                        "method": request.method,
+                        "content": post_data.encode("utf-8", errors="replace"),
+                        "headers": dict(request.headers),
+                    })
+            except Exception:
+                pass
 
     async def _on_response(self, response: Response):
         """Callback for network responses. Captures chain and files."""
@@ -186,168 +304,438 @@ class BrowserManager:
             
         return filled_log
 
+    async def _simulate_human(self, page) -> None:
+        """Simulates human interaction (mouse movements, scrolling) to build trust score."""
+        try:
+            # 1. Random Mouse Movements
+            logger.info("👻 Simulating human mouse movements...")
+            for _ in range(random.randint(2, 5)):
+                x = random.randint(100, 1500)
+                y = random.randint(100, 800)
+                # steps makes the movement less linear and a bit jerky like a real hand
+                await page.mouse.move(x, y, steps=random.randint(5, 15))
+                await asyncio.sleep(random.uniform(0.1, 0.4))
+            
+            # 2. Random Scrolling
+            if random.random() > 0.3: # 70% chance to scroll
+                logger.info("👻 Simulating human scroll...")
+                scroll_amount = random.randint(200, 600)
+                await page.mouse.wheel(0, scroll_amount)
+                await asyncio.sleep(random.uniform(0.5, 1.2))
+                # maybe scroll back up a bit
+                if random.random() > 0.5:
+                    await page.mouse.wheel(0, -random.randint(50, 200))
+                    await asyncio.sleep(random.uniform(0.3, 0.8))
+        except Exception as e:
+            logger.warning(f"Error during human simulation: {e}")
+
+    def _page_changed(self, url_before: str, hash_before: str, url_after: str, hash_after: str) -> bool:
+        """Returns True if the page meaningfully changed after a CAPTCHA interaction."""
+        return url_after != url_before or hash_after != hash_before
+
+    async def _captcha_still_present(self, page) -> bool:
+        """Quick check: is there still an active CAPTCHA on the page?"""
+        try:
+            content_lower = (await page.content()).lower()
+            title_lower = (await page.title()).lower()
+            cf_strings = ["just a moment", "cf-chl-widget", "turnstile", "checking your browser"]
+            captcha_strings = ["captcha", "recaptcha", "hcaptcha", "anti-bot", "bot-check"]
+            return (
+                any(s in content_lower for s in cf_strings + captcha_strings)
+                or any(s in title_lower for s in cf_strings)
+                or "captcha" in page.url.lower()
+            )
+        except Exception:
+            return False
+
     async def _solve_captcha(self, page) -> bool:
         """
-        Multi-tier CAPTCHA bypass system:
-        Tier 0: Cloudflare Turnstile bypass (Stealth + Auto-Click)
-        Tier 1: AI Analysis (LLM classifies & solves)
-        Tier 2: Heuristic Solvers (math regex, known patterns)
-        Tier 3: Manual Fallback (zenity popup on VNC desktop)
-        Returns True if a CAPTCHA was bypassed (or resolved itself), False if no CAPTCHA detected.
+        Multi-tier CAPTCHA bypass system with retry logic:
+          Tier 0a : Cloudflare IUAM / Turnstile — stealth wait + multi-position clicks (3 retries)
+          Tier 0b : reCAPTCHA / hCaptcha checkbox — click the "I'm not a robot" box
+          Tier 1  : AI LLM analysis (Mistral text + llava vision, 2 retries)
+          Tier 1.5: Audio challenge solver (speech-recognition, 2 retries)
+          Tier 1.7: Visual image-grid solver (llava VLM, 2 retries)
+          Tier 2  : Heuristic math CAPTCHA (DOM extraction + regex, 3 retries)
+          Tier 3  : 2captcha / Anti-Captcha service (optional — set TWO_CAPTCHA_KEY env var)
+
+        Returns True if a CAPTCHA was bypassed, False if none detected or all tiers exhausted.
         """
+        import os as _os
         try:
             content = await page.content()
             content_lower = content.lower()
-            
-            # --- CAPTCHA Detection ---
-            is_cloudflare = "just a moment" in content_lower or "cloudflare" in content_lower or "cf-chl-widget" in content_lower
 
-            # STRONG indicators: these alone confirm a CAPTCHA
+            # ─── Detection ────────────────────────────────────────────────────────
+            page_title = ""
+            try:
+                page_title = (await page.title()).lower()
+            except Exception:
+                pass
+
+            cf_iuam_strings = [
+                "just a moment", "checking your browser", "ddos protection by cloudflare",
+                "cf-chl-widget", "cf_clearance", "turnstile", "please stand by"
+            ]
+            is_cloudflare = (
+                any(s in content_lower for s in cf_iuam_strings)
+                or any(s in page_title for s in cf_iuam_strings)
+                or await page.locator('iframe[src*="cloudflare"], iframe[src*="turnstile"], [class*="cf-turnstile"]').count() > 0
+            )
+
             strong_indicators = [
                 "captcha", "recaptcha", "hcaptcha", "g-recaptcha", "h-captcha",
                 "math-problem", "anti-bot", "bot-check", "security-check",
-                "captcha-input", "captcha-container"
+                "captcha-input", "captcha-container", "are you human", "robot",
+                "prove you", "vérifiez que vous", "je ne suis pas un robot"
             ]
-            has_strong = is_cloudflare or any(ind in content_lower for ind in strong_indicators)
-            
+            has_strong = (
+                is_cloudflare
+                or any(ind in content_lower for ind in strong_indicators)
+                or "captcha" in page.url.lower()
+            )
+
             if not has_strong:
-                # WEAK indicators: need a CAPTCHA-specific input to confirm
                 weak_indicators = [
                     "vérification", "verification", "calcul", "calculation",
-                    "résolvez", "sécurité"
+                    "résolvez", "sécurité", "security challenge"
                 ]
                 has_weak = any(ind in content_lower for ind in weak_indicators)
-                
                 if has_weak:
                     has_captcha_input = await page.evaluate('''() => {
-                        const cf = document.querySelector('iframe[src*="cloudflare"]');
-                        if (cf) return true;
-                        
-                        const inputs = document.querySelectorAll(
+                        if (document.querySelector('iframe[src*="cloudflare"], iframe[src*="turnstile"]')) return true;
+                        return document.querySelectorAll(
                             'input[name*="captcha"], input[id*="captcha"], input[name="result"], ' +
                             'input[id="result"], .captcha-input, .result-input, ' +
                             'input[name="answer"], input[id="answer"]'
-                        );
-                        return inputs.length > 0;
+                        ).length > 0;
                     }''')
                     if not has_captcha_input:
-                        return False  # Weak indicator without CAPTCHA input = not a CAPTCHA
+                        return False
                 else:
-                    return False  # No indicators at all
-            
+                    return False
+
             logger.info("🛡️ CAPTCHA/Anti-Bot confirmed! Starting multi-tier bypass...")
             url_before = page.url
             html_before_hash = hashlib.md5((await page.content())[:3000].encode()).hexdigest()
 
-            # ═══════════════════════════════════════
-            # TIER 0: Cloudflare Turnstile Auto-Solver
-            # ═══════════════════════════════════════
-            if is_cloudflare or (await page.locator('iframe[src*="cloudflare"], iframe[src*="turnstile"]').count() > 0):
-                logger.info("☁️ TIER 0: Cloudflare detected! Attempting automatic bypass...")
-                
-                # Wait a bit, sometimes Stealth plugin bypasses it transparently
-                logger.info("☁️ Waiting 5s to see if Cloudflare auto-resolves...")
-                await asyncio.sleep(5)
-                
-                # Check if it resolved by itself
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=3000)
-                except: pass
-                
-                if page.url != url_before:
-                    logger.info("✅ TIER 0 SUCCESS: Cloudflare resolved automatically (Stealth)!")
-                    return True
-                
-                # If it's a click challenge, find the iframe and click
-                logger.info("☁️ Cloudflare did not auto-resolve. Looking for Turnstile checkbox...")
-                frames = page.frames
-                cf_frame = next((f for f in frames if "cloudflare" in f.url or "challenges" in f.url), None)
-                
-                if cf_frame:
+            # Human warm-up before touching anything
+            await self._simulate_human(page)
+
+            # ═══════════════════════════════════════════════════════
+            # TIER 0a: Cloudflare IUAM / Turnstile
+            # ═══════════════════════════════════════════════════════
+            if is_cloudflare:
+                logger.info("☁️ TIER 0a: Cloudflare detected — attempting stealth bypass...")
+
+                # Phase 1: Wait passively — Cloudflare JS challenge often self-solves with real browser
+                for wait_attempt in range(3):
+                    logger.info(f"☁️ Passive wait {wait_attempt+1}/3 (5s)...")
+                    await asyncio.sleep(5)
                     try:
-                        # Try to click the checkbox inside the iframe
-                        # The checkbox is usually inside a shadow root or standard wrapper
-                        checkbox = cf_frame.locator('.ctp-checkbox-label, input[type="checkbox"], #challenge-stage')
-                        if await checkbox.count() > 0:
-                            logger.info("☁️ Found Cloudflare checkbox! Simulating click...")
-                            # Hover first, then wait, then click (simulate human)
-                            await checkbox.first.hover()
-                            await asyncio.sleep(0.5)
-                            await checkbox.first.click(force=True)
-                            
-                            # Wait for resolution
-                            logger.info("☁️ Clicked. Waiting 8s for challenge phase to finish...")
-                            await asyncio.sleep(8)
-                            
-                            if (page.url != url_before) or (hashlib.md5((await page.content())[:3000].encode()).hexdigest() != html_before_hash):
-                                logger.info("✅ TIER 0 SUCCESS: Cloudflare challenge bypassed via click!")
+                        await page.wait_for_load_state("networkidle", timeout=4000)
+                    except Exception:
+                        pass
+                    url_now = page.url
+                    hash_now = hashlib.md5((await page.content())[:3000].encode()).hexdigest()
+                    if self._page_changed(url_before, html_before_hash, url_now, hash_now):
+                        if not await self._captcha_still_present(page):
+                            logger.info("✅ TIER 0a SUCCESS: Cloudflare resolved passively!")
+                            return True
+                        logger.info("☁️ Page changed but CAPTCHA still present, continuing...")
+                        url_before = url_now
+                        html_before_hash = hash_now
+
+                # Phase 2: Try clicking the Turnstile checkbox at multiple positions
+                cf_selectors = [
+                    'iframe[src*="turnstile"]',
+                    'iframe[src*="cloudflare"]',
+                    '[class*="cf-turnstile"] iframe',
+                    'iframe[title*="cloudflare"]',
+                ]
+                click_positions = [
+                    {"x": 25, "y": 25},   # typical checkbox center
+                    {"x": 30, "y": 30},
+                    {"x": 20, "y": 20},
+                    {"x": 35, "y": 35},
+                    {"x": 28, "y": 18},
+                ]
+                for cf_sel in cf_selectors:
+                    cf_loc = page.locator(cf_sel).first
+                    if await cf_loc.count() == 0:
+                        continue
+                    for pos in click_positions:
+                        try:
+                            logger.info(f"☁️ Clicking Turnstile iframe at {pos}...")
+                            await cf_loc.scroll_into_view_if_needed()
+                            await asyncio.sleep(0.3)
+                            await cf_loc.hover(position=pos)
+                            await asyncio.sleep(random.uniform(0.3, 0.8))
+                            await cf_loc.click(position=pos, force=True)
+                            logger.info("☁️ Clicked — waiting 10s for challenge resolution...")
+                            await asyncio.sleep(10)
+                            url_now = page.url
+                            hash_now = hashlib.md5((await page.content())[:3000].encode()).hexdigest()
+                            if self._page_changed(url_before, html_before_hash, url_now, hash_now):
+                                if not await self._captcha_still_present(page):
+                                    logger.info(f"✅ TIER 0a SUCCESS: Turnstile bypassed at position {pos}!")
+                                    return True
+                        except Exception as e:
+                            logger.debug(f"☁️ Click attempt failed at {pos}: {e}")
+                            continue
+                    break  # Only try first matching selector
+
+                # Phase 3: Try the Turnstile inside nested frames
+                try:
+                    for frame in page.frames:
+                        frame_url = frame.url or ""
+                        if "turnstile" in frame_url or "cloudflare" in frame_url:
+                            cb = frame.locator('input[type="checkbox"], .ctp-checkbox-label, [id*="checkbox"]').first
+                            if await cb.count() > 0:
+                                logger.info("☁️ Found checkbox inside Cloudflare frame!")
+                                await cb.click(force=True)
+                                await asyncio.sleep(8)
+                                if not await self._captcha_still_present(page):
+                                    logger.info("✅ TIER 0a SUCCESS: Cloudflare checkbox clicked in frame!")
+                                    return True
+                except Exception as e:
+                    logger.debug(f"☁️ Frame checkbox attempt failed: {e}")
+
+                logger.warning("☁️ Tier 0a exhausted — Cloudflare not bypassed automatically.")
+
+            # ═══════════════════════════════════════════════════════
+            # TIER 0b: reCAPTCHA / hCaptcha checkbox ("I'm not a robot")
+            # ═══════════════════════════════════════════════════════
+            logger.info("🤖 TIER 0b: Checking for reCAPTCHA/hCaptcha checkbox...")
+            try:
+                checkbox_selectors = [
+                    '.recaptcha-checkbox', '#recaptcha-anchor', '[class*="recaptcha-checkbox"]',
+                    '.hcaptcha-box', '.checkbox', 'div[role="checkbox"]',
+                ]
+                for frame in page.frames:
+                    for sel in checkbox_selectors:
+                        cb = frame.locator(sel).first
+                        if await cb.count() > 0 and await cb.is_visible():
+                            logger.info(f"🤖 Found CAPTCHA checkbox ({sel}) — clicking...")
+                            # Realistic human interaction: small offset + delay
+                            await cb.hover()
+                            await asyncio.sleep(random.uniform(0.5, 1.2))
+                            await cb.click(force=True)
+                            await asyncio.sleep(4)
+                            if not await self._captcha_still_present(page):
+                                logger.info("✅ TIER 0b SUCCESS: reCAPTCHA/hCaptcha checkbox passed!")
                                 return True
-                    except Exception as e:
-                        logger.warning(f"☁️ Failed to click Cloudflare challenge: {e}")
-                
-                # It might still be solving, or we failed. Let's let it fall through to manual.
-                logger.warning("☁️ Cloudflare bypass couldn't resolve automatically.")
-            
-            # ═══════════════════════════════════════
-            # TIER 1: AI Analysis (LLM)
-            # ═══════════════════════════════════════
-            if not is_cloudflare: # No point asking AI for Cloudflare, it's not a text puzzle
-                logger.info("🧠 TIER 1: AI CAPTCHA Analysis...")
-                ai_result = self.llm.solve_captcha(content, page.url)
-                
+                            # May have triggered an image challenge — fall through to Tier 1.7
+                            logger.info("🤖 Checkbox clicked but image challenge appeared — continuing tiers...")
+                            break
+            except Exception as e:
+                logger.debug(f"🤖 Tier 0b error: {e}")
+
+            # ═══════════════════════════════════════════════════════
+            # TIER 1: AI LLM Analysis (text + vision, 2 retries)
+            # ═══════════════════════════════════════════════════════
+            captcha_type = "unknown"
+            ai_input_sel = ""
+            ai_submit_sel = ""
+            for ai_attempt in range(2):
+                logger.info(f"🧠 TIER 1: AI CAPTCHA Analysis — attempt {ai_attempt+1}/2...")
+                try:
+                    screenshot_bytes = await page.screenshot(type="jpeg", quality=80)
+                    b64_img = base64.b64encode(screenshot_bytes).decode('utf-8')
+                except Exception:
+                    b64_img = None
+
+                # Refresh content in case page changed
+                current_content = await page.content()
+                ai_result = self.llm.solve_captcha(current_content, page.url, base64_image=b64_img)
+
                 captcha_type = ai_result.get("type", "unknown")
                 ai_answer = ai_result.get("answer")
                 ai_confidence = ai_result.get("confidence", 0)
                 ai_input_sel = ai_result.get("input_selector", "")
                 ai_submit_sel = ai_result.get("submit_selector", "")
-                
-                logger.info(f"🧠 AI Result: type={captcha_type}, answer={ai_answer}, confidence={ai_confidence}%")
-                
-                # Try AI answer if confident enough
-                if ai_answer and ai_confidence >= 70:
-                    logger.info(f"🧠 AI confident ({ai_confidence}%) — applying answer: {ai_answer}")
+
+                logger.info(f"🧠 AI: type={captcha_type}, answer={ai_answer}, confidence={ai_confidence}%")
+
+                if ai_answer and ai_confidence >= 65:
+                    logger.info(f"🧠 Applying AI answer: '{ai_answer}'")
                     solved = await self._apply_captcha_answer(page, str(ai_answer), ai_input_sel, ai_submit_sel)
                     if solved:
                         logger.info("✅ TIER 1 SUCCESS: AI solved the CAPTCHA!")
                         return True
-                    logger.warning("🧠 AI answer applied but page didn't change. Falling through...")
-                
-                # ═══════════════════════════════════════
-                # TIER 1.5: Audio Challenge Solver (reCAPTCHA/hCaptcha)
-                # ═══════════════════════════════════════
-                logger.info("🔊 TIER 1.5: Checking for Audio Challenge...")
+                    logger.warning("🧠 AI answer submitted but page unchanged — retrying...")
+                    await asyncio.sleep(2)
+                elif ai_confidence < 65:
+                    logger.info(f"🧠 AI confidence too low ({ai_confidence}%), skipping answer application.")
+                    break
+
+            # ═══════════════════════════════════════════════════════
+            # TIER 1.5: Audio Challenge (reCAPTCHA/hCaptcha, 2 retries)
+            # ═══════════════════════════════════════════════════════
+            for audio_attempt in range(2):
+                logger.info(f"🔊 TIER 1.5: Audio Challenge solver — attempt {audio_attempt+1}/2...")
                 audio_solved = await self._solve_audio_captcha(page)
                 if audio_solved:
                     logger.info("✅ TIER 1.5 SUCCESS: Audio CAPTCHA solved!")
                     return True
-                
-                # ═══════════════════════════════════════
-                # TIER 1.7: Visual Challenge Solver (Image Grid)
-                # ═══════════════════════════════════════
-                logger.info("👁️ TIER 1.7: Checking for Visual Grid Challenge...")
+                if audio_attempt == 0:
+                    await asyncio.sleep(2)
+
+            # ═══════════════════════════════════════════════════════
+            # TIER 1.7: Visual Image Grid (llava VLM, 2 retries)
+            # ═══════════════════════════════════════════════════════
+            for vis_attempt in range(2):
+                logger.info(f"👁️ TIER 1.7: Visual grid solver — attempt {vis_attempt+1}/2...")
                 visual_solved = await self._solve_visual_captcha(page)
                 if visual_solved:
                     logger.info("✅ TIER 1.7 SUCCESS: Visual CAPTCHA solved!")
                     return True
-                
-                # ═══════════════════════════════════════
-                # TIER 2: Heuristic Solvers
-                # ═══════════════════════════════════════
-                logger.info("🔧 TIER 2: Heuristic solvers...")
-                
-                if captcha_type in ["math", "unknown"]:
-                    heuristic_solved = await self._solve_math_captcha_heuristic(page, content)
-                    if heuristic_solved:
-                        logger.info("✅ TIER 2 SUCCESS: Heuristic math solver worked!")
-                        return True
+                if vis_attempt == 0:
+                    await asyncio.sleep(2)
+
+            # ═══════════════════════════════════════════════════════
+            # TIER 2: Heuristic Math Solver (DOM + regex, 3 retries)
+            # ═══════════════════════════════════════════════════════
+            logger.info("🔧 TIER 2: Heuristic math solver...")
+            for math_attempt in range(3):
+                fresh_content = await page.content()
+                heuristic_solved = await self._solve_math_captcha_heuristic(page, fresh_content)
+                if heuristic_solved:
+                    logger.info(f"✅ TIER 2 SUCCESS: Math CAPTCHA solved (attempt {math_attempt+1})!")
+                    return True
+                if math_attempt < 2:
+                    await asyncio.sleep(2)
+
+            # ═══════════════════════════════════════════════════════
+            # TIER 3: 2captcha / Anti-Captcha Service (optional)
+            # ═══════════════════════════════════════════════════════
+            two_captcha_key = _os.getenv("TWO_CAPTCHA_KEY", "") or _os.getenv("ANTI_CAPTCHA_KEY", "")
+            if two_captcha_key:
+                logger.info("🔑 TIER 3: External CAPTCHA service (2captcha/Anti-Captcha)...")
+                solved = await self._solve_via_service(page, two_captcha_key, captcha_type)
+                if solved:
+                    logger.info("✅ TIER 3 SUCCESS: External service solved the CAPTCHA!")
+                    return True
             else:
-                captcha_type = "cloudflare"
-            
-            logger.warning("❌ All autonomous CAPTCHA bypass tiers failed. Proceeding without human intervention as requested.")
+                logger.info("🔑 TIER 3 skipped (set TWO_CAPTCHA_KEY or ANTI_CAPTCHA_KEY env var to enable).")
+
+            logger.warning("❌ All CAPTCHA bypass tiers exhausted — could not solve automatically.")
             return False
-            
+
         except Exception as e:
-            logger.warning(f"🛡️ CAPTCHA solver error: {e}")
+            logger.warning(f"🛡️ CAPTCHA solver top-level error: {e}")
+            return False
+
+    async def _solve_via_service(self, page, api_key: str, captcha_type: str) -> bool:
+        """
+        Submits the CAPTCHA to 2captcha API for solving.
+        Supports: recaptcha v2, hcaptcha, image/text CAPTCHAs.
+        API docs: https://2captcha.com/api-docs
+        """
+        import requests as _req
+        try:
+            page_url = page.url
+
+            # Detect sitekey for reCAPTCHA/hCaptcha
+            sitekey = await page.evaluate('''() => {
+                const rc = document.querySelector('[data-sitekey]');
+                if (rc) return rc.getAttribute('data-sitekey');
+                const irc = document.querySelector('.g-recaptcha, .h-captcha');
+                if (irc) return irc.getAttribute('data-sitekey');
+                return null;
+            }''')
+
+            is_recaptcha = captcha_type == "recaptcha" or await page.locator('.g-recaptcha, [data-sitekey]').count() > 0
+            is_hcaptcha = captcha_type == "hcaptcha" or await page.locator('.h-captcha').count() > 0
+
+            if sitekey and (is_recaptcha or is_hcaptcha):
+                method = "hcaptcha" if is_hcaptcha else "userrecaptcha"
+                params = {
+                    "key": api_key,
+                    "method": method,
+                    "sitekey": sitekey,
+                    "pageurl": page_url,
+                    "json": 1,
+                }
+                logger.info(f"🔑 2captcha: Submitting {method} with sitekey={sitekey[:20]}...")
+                resp = _req.post("http://2captcha.com/in.php", data=params, timeout=20)
+                if resp.json().get("status") != 1:
+                    logger.warning(f"🔑 2captcha submission failed: {resp.text}")
+                    return False
+
+                task_id = resp.json()["request"]
+                logger.info(f"🔑 2captcha task ID: {task_id} — polling for result...")
+
+                # Poll for result (max 60s)
+                for _ in range(12):
+                    await asyncio.sleep(5)
+                    res = _req.get(
+                        f"http://2captcha.com/res.php?key={api_key}&action=get&id={task_id}&json=1",
+                        timeout=10
+                    )
+                    data = res.json()
+                    if data.get("status") == 1:
+                        token = data["request"]
+                        logger.info(f"🔑 2captcha solved! Token: {token[:30]}...")
+                        # Inject token into page
+                        await page.evaluate(f'''(token) => {{
+                            const ta = document.querySelector('#g-recaptcha-response, textarea[name="g-recaptcha-response"]');
+                            if (ta) {{ ta.value = token; ta.style.display = 'block'; }}
+                            const ha = document.querySelector('[name="h-captcha-response"]');
+                            if (ha) {{ ha.value = token; }}
+                            if (window.___grecaptcha_cfg) {{
+                                Object.keys(window.___grecaptcha_cfg.clients || {{}}).forEach(k => {{
+                                    const c = window.___grecaptcha_cfg.clients[k];
+                                    const cb = c?.aa?.callback || c?.l?.callback;
+                                    if (typeof cb === 'function') cb(token);
+                                }});
+                            }}
+                        }}''', token)
+                        await asyncio.sleep(2)
+                        # Try to submit the form
+                        for submit_sel in ['[type="submit"]', 'button[class*="submit"]', '#recaptcha-demo-submit']:
+                            try:
+                                loc = page.locator(submit_sel).first
+                                if await loc.count() > 0 and await loc.is_visible():
+                                    await loc.click()
+                                    await asyncio.sleep(3)
+                                    return not await self._captcha_still_present(page)
+                            except Exception:
+                                continue
+                        return not await self._captcha_still_present(page)
+                    elif data.get("request") == "CAPCHA_NOT_READY":
+                        continue
+                    else:
+                        logger.warning(f"🔑 2captcha error: {data}")
+                        return False
+
+            # Fallback: image-based CAPTCHA
+            try:
+                screenshot_bytes = await page.screenshot(type="jpeg", quality=70)
+                b64_img = base64.b64encode(screenshot_bytes).decode('utf-8')
+                params = {"key": api_key, "method": "base64", "body": b64_img, "json": 1}
+                resp = _req.post("http://2captcha.com/in.php", data=params, timeout=20)
+                if resp.json().get("status") != 1:
+                    return False
+                task_id = resp.json()["request"]
+                for _ in range(10):
+                    await asyncio.sleep(5)
+                    res = _req.get(
+                        f"http://2captcha.com/res.php?key={api_key}&action=get&id={task_id}&json=1",
+                        timeout=10
+                    )
+                    data = res.json()
+                    if data.get("status") == 1:
+                        answer = data["request"]
+                        return await self._apply_captcha_answer(page, answer, "", "")
+                    elif data.get("request") != "CAPCHA_NOT_READY":
+                        return False
+            except Exception as e:
+                logger.warning(f"🔑 2captcha image fallback error: {e}")
+
+            return False
+        except Exception as e:
+            logger.warning(f"🔑 External CAPTCHA service error: {e}")
             return False
 
     async def _apply_captcha_answer(self, page, answer: str, input_selector: str, submit_selector: str) -> bool:
@@ -368,8 +756,11 @@ class BrowserManager:
                 try:
                     loc = page.locator(sel).first
                     if await loc.count() > 0 and await loc.is_visible():
-                        await loc.fill(answer)
-                        logger.info(f"📝 Filled CAPTCHA answer '{answer}' in '{sel}'")
+                        await loc.click() # Click the input first to focus
+                        await asyncio.sleep(random.uniform(0.2, 0.6))
+                        # Type with realistic human latency
+                        await loc.type(answer, delay=random.randint(100, 250))
+                        logger.info(f"📝 Typed CAPTCHA answer '{answer}' in '{sel}' with human delay")
                         filled = True
                         break
                 except:
@@ -393,6 +784,8 @@ class BrowserManager:
                 try:
                     loc = page.locator(sel).first
                     if await loc.count() > 0 and await loc.is_visible():
+                        await loc.hover() # Hover button before clicking
+                        await asyncio.sleep(random.uniform(0.5, 1.5))
                         await loc.click()
                         logger.info(f"🖱️ Clicked submit: '{sel}'")
                         clicked = True
@@ -450,10 +843,27 @@ class BrowserManager:
                 return el ? parseInt(el.innerText) : null;
             }''')
             
-            # Strategy 2: Regex fallback
+            # Strategy 2: Regex fallback (with textual number normalisation)
             if first_num is None or operator is None or second_num is None:
                 logger.info("🔢 Trying regex fallback for math extraction...")
-                math_match = re.search(r'(\d+)\s*([+\-×*x/÷])\s*(\d+)\s*=', content)
+                # Normalise textual numbers (FR/EN) → digits before applying regex
+                _text_to_num = {
+                    'zéro': '0', 'zero': '0',
+                    'une': '1', 'un': '1', 'one': '1',
+                    'deux': '2', 'two': '2',
+                    'trois': '3', 'three': '3',
+                    'quatre': '4', 'four': '4',
+                    'cinq': '5', 'five': '5',
+                    'six': '6',
+                    'sept': '7', 'seven': '7',
+                    'huit': '8', 'eight': '8',
+                    'neuf': '9', 'nine': '9',
+                    'dix': '10', 'ten': '10',
+                }
+                normalised = content
+                for word, digit in _text_to_num.items():
+                    normalised = re.sub(r'\b' + word + r'\b', digit, normalised, flags=re.IGNORECASE)
+                math_match = re.search(r'(\d+)\s*([+\-×*x/÷])\s*(\d+)\s*=', normalised)
                 if math_match:
                     first_num = int(math_match.group(1))
                     operator = math_match.group(2)
@@ -560,7 +970,12 @@ class BrowserManager:
                 audio = AudioSegment.from_file(temp_mp3)
                 audio.export(temp_wav, format="wav")
             except Exception as e:
-                logger.error(f"🔊 Audio conversion failed: {e}. Is ffmpeg installed?")
+                logger.error(
+                    f"🔊 Audio conversion failed: {e}. "
+                    "ffmpeg is required for audio CAPTCHA solving. "
+                    "Install it with: apt-get install ffmpeg  (or brew install ffmpeg on macOS). "
+                    "Skipping audio tier."
+                )
                 return False
                 
             # 4. Transcribe using SpeechRecognition
@@ -716,8 +1131,9 @@ class BrowserManager:
         # Tracking State
         seen_states = set() # Hash of (URL + HTML snippet)
         clicked_hashes = set() # Hash of button text/selector
-        stagnation_count = 0 
-        loading_wait_count = 0 
+        stagnation_count = 0
+        loading_wait_count = 0
+        form_was_filled = False  # track whether a form was submitted
         
         # Initial State
         await page.wait_for_load_state("networkidle")
@@ -727,11 +1143,26 @@ class BrowserManager:
         # Initial AI Pattern Detection
         logger.info("🤖 AI: Analyzing initial page for phishing patterns...")
         initial_patterns = self.llm.detect_phishing_patterns(init_html, page.url)
-        logger.info(f"🤖 AI Initial Analysis: Suspicion={initial_patterns.get('suspicion_score', '?')}%, Patterns={initial_patterns.get('detected_patterns', [])}")
-        
+        initial_score = initial_patterns.get('suspicion_score', 0)
+        is_legit = initial_patterns.get('is_legitimate_site', False)
+        logger.info(f"🤖 AI Initial Analysis: Suspicion={initial_score}%, Légitime={is_legit}, Patterns={initial_patterns.get('detected_patterns', [])}")
+
+        # If AI immediately identifies a legitimate site with very low suspicion, stop interaction
+        if is_legit and initial_score < 15:
+            journey_log.append({
+                "step": "step_00_initial",
+                "description": f"Page initiale — site légitime détecté (suspicion: {initial_score}%)",
+                "screenshot": await page.screenshot(full_page=True),
+                "url": page.url,
+                "html": init_html,
+                "ai_patterns": initial_patterns
+            })
+            logger.info("✅ Site identifié comme légitime par l'IA — exploration minimale.")
+            return journey_log
+
         journey_log.append({
             "step": "step_00_initial",
-            "description": f"Initial Page Load (AI Suspicion: {initial_patterns.get('suspicion_score', '?')}%)",
+            "description": f"Page initiale (suspicion IA: {initial_score}%)",
             "screenshot": await page.screenshot(full_page=True),
             "url": page.url,
             "html": init_html,
@@ -787,6 +1218,36 @@ class BrowserManager:
             else:
                 loading_wait_count = 0
 
+            # 🍪 Cookie Banner Dismissal (before any interaction)
+            try:
+                _cookie_selectors = [
+                    # Accept/agree buttons
+                    "button#accept-cookie", "button#acceptAll", "button#accept_all",
+                    "button[id*='accept']", "button[class*='accept']",
+                    "button[id*='agree']", "button[class*='agree']",
+                    "a[id*='accept']", "a[class*='accept-cookie']",
+                    # French
+                    "button:has-text('Accepter tout')", "button:has-text('Tout accepter')",
+                    "button:has-text('Accepter')", "button:has-text('J\\'accepte')",
+                    "button:has-text('Continuer sans accepter')",
+                    # English
+                    "button:has-text('Accept all')", "button:has-text('Accept All')",
+                    "button:has-text('Accept cookies')", "button:has-text('I agree')",
+                    "button:has-text('OK')", "button:has-text('Got it')",
+                    # Generic consent wrappers
+                    "#cookie-accept", "#cookie-consent-accept", ".cookie-accept",
+                    "[data-testid*='cookie-accept']", "[aria-label*='cookie']",
+                ]
+                for _sel in _cookie_selectors:
+                    _loc = page.locator(_sel).first
+                    if await _loc.count() > 0 and await _loc.is_visible():
+                        logger.info(f"🍪 Dismissing cookie banner: {_sel}")
+                        await _loc.click(timeout=2000)
+                        await asyncio.sleep(0.8)
+                        break
+            except Exception:
+                pass
+
             # 🛡️ MULTI-TIER CAPTCHA SOLVER: AI → Heuristic → Manual Popup
             captcha_solved = await self._solve_captcha(page)
             if captcha_solved:
@@ -798,7 +1259,23 @@ class BrowserManager:
                     "url": page.url,
                     "html": await page.content()
                 })
-                continue  # Re-evaluate page after CAPTCHA
+                continue # IMPORTANT: Re-evaluate the new page structure safely
+                
+            # If CAPTCHA is active but unsolved, do NOT interact with anything else
+            try:
+                page_text = (await page.content()).lower()
+                is_captcha_active = "captcha" in page.url.lower() or "just a moment" in page_text or "cf-chl-widget" in page_text or "security-check" in page_text
+                if is_captcha_active:
+                    logger.warning("🚨 CAPTCHA is still active and unsolved. Halting exploration to prevent ban.")
+                    journey_log.append({
+                        "step": f"step_{i:02d}_blocked",
+                        "description": "Exploration halted: CAPTCHA unsolved.",
+                        "screenshot": await page.screenshot(full_page=True),
+                        "url": page.url,
+                        "html": await page.content()
+                    })
+                    break
+            except: pass
 
             # ⚡ FAST PATH: Force click on "Commencer" / "Start" buttons proactively
             try:
@@ -832,8 +1309,6 @@ class BrowserManager:
             patterns = self.llm.detect_phishing_patterns(content, current_url)
             
             if patterns.get("is_final_payload_page") or patterns.get("recommendation") == "stop_reached_payload":
-                logger.info("🎯 AI detected Suspicious Page - Taking screenshot but CONTINUING exploration...")
-                # We do NOT break here anymore, we want to go deeper!
                 journey_log.append({
                     "step": f"step_{i:02d}_suspicious",
                     "description": f"[SUSPICIOUS PAGE] {patterns.get('detected_patterns', [])}",
@@ -842,7 +1317,11 @@ class BrowserManager:
                     "html": content,
                     "ai_patterns": patterns
                 })
-                # continue exploration instead of break
+                if form_was_filled:
+                    logger.info("🎯 Final payload page detected after form submission — stopping exploration.")
+                    break
+                else:
+                    logger.info("🎯 AI detected Suspicious Page — continuing to go deeper...")
 
             # 3. Gather interactive elements
             candidates = []
@@ -892,11 +1371,11 @@ class BrowserManager:
             # 3b. PROACTIVE: Fill Forms before clicking
             filled_actions = await self._fill_page_inputs(page)
             if filled_actions:
+                form_was_filled = True
                 desc = f"Form Auto-Fill: {', '.join(filled_actions)}"
                 logger.info(f"📝 {desc}")
-                # If we filled forms, we likely want to submit. 
+                # If we filled forms, we likely want to submit.
                 # We don't break yet, we let the click logic find the submit button.
-                # But we might want to capture this state change.
 
             # 4. AI-Powered Element Analysis (Proactive)
             ai_ranked_elements = []
@@ -917,22 +1396,22 @@ class BrowserManager:
             # 5. Hybrid Scoring: 30% Heuristic + 70% AI
             elements_to_try = []
             for c in candidates:
-                heuristic_score = 0
+                heuristic_score = 10  # Base fallback score
                 txt = c['text'].lower()
                 
-                # Heuristic scoring
-                if any(k in txt for k in priority_keywords): heuristic_score = 150 # Boosted priority
-                elif any(k in txt for k in nav_keywords): heuristic_score = 100
+                # Heuristic scoring (exclusive tiers)
+                if any(k in txt for k in priority_keywords):
+                    heuristic_score = 150  # Boosted priority
+                elif any(k in txt for k in nav_keywords):
+                    heuristic_score = 100
                 
-                # Super Boost for "Commencer" specifically
+                # Super Boost for "Commencer" / "Start" specifically
                 if "commencer" in txt or "start" in txt:
                     heuristic_score += 200
 
                 # Boost "Login" / "Submit" if we just filled a form
                 if filled_actions and ("login" in txt or "connect" in txt or "submit" in txt or "valider" in txt):
                     heuristic_score += 150
-
-                else: heuristic_score = 10
                 
                 # AI scoring
                 ai_data = ai_scores_map.get(c['text'], {'score': 50, 'reason': ''}) if ai_ranked_elements else {'score': 50, 'reason': ''}
@@ -992,6 +1471,22 @@ class BrowserManager:
                         break
                 except: continue
                 
+            # Fallback: Stagnation → Scroll + Tab to reveal hidden elements
+            if not clicked and stagnation_count >= 2:
+                logger.info(f"⏬ Stagnation detected ({stagnation_count}x) — trying scroll + Tab to reveal elements...")
+                try:
+                    await page.mouse.wheel(0, random.randint(300, 600))
+                    await asyncio.sleep(1.0)
+                    await page.keyboard.press("Tab")
+                    await asyncio.sleep(0.5)
+                    # Try pressing Enter on the focused element (may be a button)
+                    await page.keyboard.press("Enter")
+                    await asyncio.sleep(1.5)
+                    logger.info("⏬ Scroll+Tab done — re-evaluating page on next iteration.")
+                    continue
+                except Exception as e:
+                    logger.debug(f"Scroll+Tab strategy failed: {e}")
+
             # Fallback: AI Direct Suggestion (if hybrid fails)
             if not clicked and stagnation_count >= 3:
                 logger.info("🤖 Heuristics exhausted. Asking AI for direct guidance...")

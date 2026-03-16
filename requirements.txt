@@ -8,3 +8,6 @@ jsbeautifier>=1.14.0
 flask>=3.0.0
 SpeechRecognition>=3.10.0
 pydub>=0.25.1
+playwright-stealth>=1.0.6,<2.0
+opencv-python>=4.8.0
+numpy>=1.24.0
