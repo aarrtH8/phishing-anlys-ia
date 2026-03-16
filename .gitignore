@@ -4,3 +4,8 @@ __pycache__/
 .env
 .venv
 dump/
+.claude/
+cloudflare.zip
+cloudflare_extracted/
+test_log.txt
+*.log
