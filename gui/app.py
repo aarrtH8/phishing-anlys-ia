@@ -15,7 +15,10 @@ from flask import Flask, render_template, jsonify, request, send_from_directory,
 # Paths
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-SCAN_SCRIPT = os.path.join(BASE_DIR, "scan.ps1")
+
+# Docker Compose project name — must match COMPOSE_PROJECT_NAME in run_all.bat
+# so the built image is consistently named "phishhunter-analyzer"
+COMPOSE_PROJECT_NAME = "phishhunter"
 
 
 def _load_dotenv():
@@ -46,7 +49,8 @@ _current_scan = {
     "started_at": None,
     "process": None,
     "output": "",
-    "return_code": None
+    "return_code": None,
+    "visible": False,   # True when launched with --visible (NoVNC active)
 }
 
 
@@ -271,17 +275,18 @@ def preflight():
     except Exception:
         checks["ollama_models"] = []
 
-    # Check if image exists
+    # Check if image exists (use the project name forced by COMPOSE_PROJECT_NAME)
     if checks["docker"]:
         try:
+            env = {**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT_NAME}
             r = subprocess.run(
-                ["docker", "images", "-q", "projet_mace-analyzer"],
-                capture_output=True, text=True, timeout=5)
-            # Also check other possible image names
+                ["docker", "images", "-q", f"{COMPOSE_PROJECT_NAME}-analyzer"],
+                capture_output=True, text=True, timeout=5, env=env)
             if not r.stdout.strip():
+                # Fallback: ask compose directly
                 r = subprocess.run(
                     ["docker", "compose", "images", "-q"],
-                    capture_output=True, text=True, timeout=5, cwd=BASE_DIR)
+                    capture_output=True, text=True, timeout=5, cwd=BASE_DIR, env=env)
             checks["image_built"] = bool(r.stdout.strip())
         except Exception:
             pass
@@ -338,6 +343,7 @@ def launch_scan():
             _current_scan["started_at"] = datetime.now().isoformat()
             _current_scan["output"] = ""
             _current_scan["return_code"] = None
+            _current_scan["visible"] = visible
 
         try:
             cmd_args = ["python", "main.py", url, "--regions", regions, "--model", model]
@@ -363,6 +369,8 @@ def launch_scan():
             _current_scan["output"] += f"[GUI] Commande: {' '.join(docker_cmd)}\n"
             _current_scan["output"] += f"[GUI] {'='*50}\n\n"
 
+            # Pass COMPOSE_PROJECT_NAME so docker compose uses the right image
+            proc_env = {**os.environ, "COMPOSE_PROJECT_NAME": COMPOSE_PROJECT_NAME}
             proc = subprocess.Popen(
                 docker_cmd,
                 cwd=BASE_DIR,
@@ -370,7 +378,8 @@ def launch_scan():
                 stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
-                errors="replace"
+                errors="replace",
+                env=proc_env,
             )
             _current_scan["process"] = proc
 
@@ -440,7 +449,8 @@ def scan_status():
         "started_at": _current_scan["started_at"],
         "output": partial,
         "output_length": len(full_output),
-        "return_code": _current_scan["return_code"]
+        "return_code": _current_scan["return_code"],
+        "visible": _current_scan.get("visible", False),
     })
 
 

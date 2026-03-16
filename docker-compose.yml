@@ -1,9 +1,12 @@
 version: '3.8'
 
+# Project name forced here AND in run_all.bat so the image is always "phishhunter-analyzer"
+name: phishhunter
+
 services:
   analyzer:
     build: .
-    container_name: phish-hunter-visual
+    # No static container_name — docker compose run uses --name phish-scan-<ts> per scan
     ports:
       - "6080:6080" # NoVNC Web Interface
       - "5900:5900" # VNC Raw

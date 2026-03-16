@@ -728,7 +728,7 @@ function renderScanStatus(data) {
     if (actionsEl) {
         const newActions = [
             running ? '<button class="btn btn-secondary" onclick="stopScan()" style="flex:1;">Arrêter le scan</button>' : '',
-            running ? '<button class="btn btn-secondary" onclick="window.open(\'http://localhost:6080/vnc_lite.html\', \'_blank\')" style="flex:1; border-color: var(--gold); color: var(--gold);">👀 Voir le Navigateur (VNC)</button>' : '',
+            (running && data.visible) ? '<button class="btn btn-secondary" onclick="window.open(\'http://localhost:6080/vnc_lite.html\', \'_blank\')" style="flex:1; border-color: var(--gold); color: var(--gold);">👀 Voir le Navigateur (VNC)</button>' : '',
             !running && data.return_code === 0 ? '<button class="btn btn-primary" style="flex:1;" onclick="navigate(\'#dashboard\')">Voir les résultats</button>' : '',
             !running && data.return_code !== null && data.return_code !== 0 ? '<button class="btn btn-primary" style="flex:1;" onclick="launchScan()">Relancer</button>' : '',
         ].join('');
