@@ -352,14 +352,14 @@ def launch_scan():
             if not use_vt:
                 cmd_args.append("--no-vt")
 
-            docker_cmd = [
-                "docker", "compose", "run", "--rm",
-                # --service-ports exposes all mapped ports (needed for NoVNC on :6080/:5900)
-                "--service-ports",
-                # Use a unique container name per scan to avoid "already in use" conflicts
-                "--name", f"phish-scan-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                "analyzer"
-            ] + cmd_args
+            docker_cmd = ["docker", "compose", "run", "--rm"]
+            # --service-ports binds 6080/5900 — only needed in visible mode (NoVNC)
+            # In headless mode it would unnecessarily block those ports
+            if visible:
+                docker_cmd.append("--service-ports")
+            # Unique container name per scan to avoid "already in use" conflicts
+            docker_cmd += ["--name", f"phish-scan-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                           "analyzer"] + cmd_args
 
             _current_scan["output"] += f"[GUI] Lancement du scan...\n"
             _current_scan["output"] += f"[GUI] URL: {url}\n"

@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Project name forced here AND in run_all.bat so the image is always "phishhunter-analyzer"
 name: phishhunter
 
