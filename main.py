@@ -171,196 +171,294 @@ async def analyze_phishing_url_region(url: str, headless: bool, region_code: str
 
 
 def generate_final_report(consolidated_data, llm_summary, output_dir: str, model: str = "mistral"):
-    md = "# PhishHunter Final Forensic Report\n\n"
-    md += f"**Target**: `{consolidated_data['target_url']}`\n"
-    md += f"**Scan Time**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+    scan_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    target    = consolidated_data["target_url"]
+    risk      = consolidated_data.get("risk_score", {})
+    ti        = consolidated_data.get("threat_intel", {})
+    ref_region = consolidated_data["regions"][0] if consolidated_data.get("regions") else {}
 
-    # Risk Score summary
-    risk = consolidated_data.get("risk_score", {})
-    if risk:
-        score = risk.get("score", 0)
-        level = risk.get("level", "unknown")
-        level_emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(level, "⚪")
-        md += f"## {level_emoji} Risk Score: {score}/100 — {level.upper()}\n"
-        factors = risk.get("factors", [])
-        if factors:
-            md += "**Scoring factors:**\n"
-            for f in factors:
-                md += f"- {f}\n"
-        md += "\n"
+    score = risk.get("score", 0)
+    level = risk.get("level", "unknown")
+    level_emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(level, "⚪")
 
-    # Threat Intel
-    ti = consolidated_data.get("threat_intel", {})
-    if ti:
-        md += "## Threat Intelligence\n\n"
-        vt = ti.get("virustotal", {})
-        if vt and not vt.get("skipped"):
-            if vt.get("error"):
-                md += f"**VirusTotal**: ⚠️ Error — {vt['error']}\n\n"
-            else:
-                md += f"**VirusTotal**: {vt.get('malicious', 0)} malicious / {vt.get('suspicious', 0)} suspicious / {vt.get('total', 0)} engines\n"
-                if vt.get("permalink"):
-                    md += f"[Voir le rapport VT]({vt['permalink']})\n\n"
+    # ── Header ───────────────────────────────────────────────────────────
+    md  = "# 🕵️ PhishHunter — Rapport Forensique\n\n"
+    md += f"> **Cible** : `{target}`  \n"
+    md += f"> **Date** : {scan_time}  \n"
+    md += f"> **Moteur** : PhishHunter v2 · Modèle LLM : `{model}`\n\n"
+    md += "---\n\n"
+
+    # ── Risk Score banner ─────────────────────────────────────────────────
+    md += f"## {level_emoji} Score de Risque : {score}/100 — {level.upper()}\n\n"
+    factors = risk.get("factors", [])
+    if factors:
+        md += "| Facteur de scoring | |\n|---|---|\n"
+        for fac in factors:
+            md += f"| {fac} | |\n"
+    md += "\n"
+
+    # ── Threat Intelligence ───────────────────────────────────────────────
+    md += "## 🔎 Threat Intelligence\n\n"
+    md += "| Indicateur | Valeur | Statut |\n"
+    md += "|------------|--------|--------|\n"
+
+    # VirusTotal
+    vt = ti.get("virustotal", {})
+    if vt and not vt.get("skipped"):
+        if vt.get("error"):
+            md += f"| VirusTotal | Erreur : {vt['error'][:60]} | ⚠️ |\n"
         else:
-            md += "**VirusTotal**: Non configuré (définir VT_API_KEY)\n\n"
+            vt_mal = vt.get("malicious", 0)
+            vt_sus = vt.get("suspicious", 0)
+            vt_tot = vt.get("total", 0)
+            vt_status = "🔴" if vt_mal > 0 else ("🟡" if vt_sus > 0 else "🟢")
+            md += f"| VirusTotal | {vt_mal} malicious / {vt_sus} suspicious / {vt_tot} engines | {vt_status} |\n"
+            # Top detections
+            for eng in vt.get("top_detections", [])[:5]:
+                md += f"| &nbsp;&nbsp;↳ {eng.get('engine','?')} | {eng.get('result','?')} | 🔴 |\n"
+    else:
+        md += "| VirusTotal | Non configuré (VT_API_KEY manquante) | ⚪ |\n"
 
-        whois = ti.get("whois", {})
-        if whois and not whois.get("error"):
-            age = whois.get("age_days")
-            age_str = f"{age} jours" if age is not None else "inconnu"
-            md += f"**Domain Age**: {age_str} (enregistré le {whois.get('registration_date', '?')[:10]})\n"
-            md += f"**Registrar**: {whois.get('registrar', 'inconnu')}\n\n"
+    # WHOIS
+    whois = ti.get("whois", {})
+    if whois and not whois.get("error"):
+        age = whois.get("age_days")
+        age_str = f"{age} jours" if age is not None else "inconnu"
+        age_status = "🔴" if (age is not None and age < 30) else ("🟡" if (age is not None and age < 180) else "🟢")
+        md += f"| Âge du domaine | {age_str} (créé le {whois.get('registration_date','?')[:10]}) | {age_status} |\n"
+        md += f"| Registrar | {whois.get('registrar','inconnu')} | |\n"
+        if whois.get("registrant_country"):
+            md += f"| Pays registrant | {whois['registrant_country']} | |\n"
 
-        ssl_d = ti.get("ssl", {})
-        if ssl_d:
-            valid_str = "✅ Valide" if ssl_d.get("valid") else ("❌ Expiré" if ssl_d.get("is_expired") else "⚠️ Invalide/Absent")
-            md += f"**SSL**: {valid_str} — Émetteur: {ssl_d.get('issuer', '?')}"
-            if ssl_d.get("days_left") is not None:
-                md += f" ({ssl_d['days_left']} jours restants)"
-            if ssl_d.get("is_self_signed"):
-                md += " ⚠️ AUTO-SIGNÉ"
-            md += "\n\n"
+    # SSL
+    ssl_d = ti.get("ssl", {})
+    if ssl_d:
+        ssl_ok = ssl_d.get("valid")
+        ssl_status = "🟢" if ssl_ok else "🔴"
+        ssl_str = "Valide" if ssl_ok else ("Expiré" if ssl_d.get("is_expired") else "Invalide/Absent")
+        md += f"| SSL/TLS | {ssl_str} — Émetteur : {ssl_d.get('issuer','?')}"
+        if ssl_d.get("days_left") is not None:
+            md += f" ({ssl_d['days_left']}j restants)"
+        if ssl_d.get("is_self_signed"):
+            md += " ⚠️ AUTO-SIGNÉ"
+        md += f" | {ssl_status} |\n"
+        if ssl_d.get("subject_alt_names"):
+            md += f"| &nbsp;&nbsp;↳ SANs | `{'`, `'.join(ssl_d['subject_alt_names'][:5])}` | |\n"
 
-        # URLScan.io
-        urlscan = ti.get("urlscan") or {}
-        if urlscan.get("found") and not urlscan.get("skipped"):
-            malicious_flags = urlscan.get("malicious_flags", 0)
-            flag_str = f"🔴 {malicious_flags} scan(s) malicieux" if malicious_flags else "✅ Aucun flag malicieux"
-            md += f"**URLScan.io**: {flag_str} sur {urlscan.get('total_prior_scans', 0)} scan(s) historiques\n"
-            if urlscan.get("recent_scans"):
-                latest = urlscan["recent_scans"][0]
-                if latest.get("report_url"):
-                    md += f"  Dernier rapport: [{latest['scan_date'][:10]}]({latest['report_url']})\n"
-            md += "\n"
-        elif urlscan.get("found") is False:
-            md += "**URLScan.io**: Aucun scan historique trouvé pour ce domaine\n\n"
+    # URLScan
+    urlscan = ti.get("urlscan") or {}
+    if urlscan.get("found") and not urlscan.get("skipped"):
+        flags = urlscan.get("malicious_flags", 0)
+        us_status = "🔴" if flags else "🟢"
+        md += f"| URLScan.io | {flags} flag(s) malicieux / {urlscan.get('total_prior_scans',0)} scans historiques | {us_status} |\n"
+        for scan in (urlscan.get("recent_scans") or [])[:2]:
+            if scan.get("report_url"):
+                md += f"| &nbsp;&nbsp;↳ Scan [{scan.get('scan_date','?')[:10]}] | [{scan['report_url'][:60]}]({scan['report_url']}) | |\n"
+    elif urlscan.get("found") is False:
+        md += "| URLScan.io | Aucun scan historique | ⚪ |\n"
 
-        # IP / ASN info
-        ip_info = ti.get("ip_info") or {}
-        if ip_info and not ip_info.get("error"):
-            flags = []
-            if ip_info.get("is_proxy"):
-                flags.append("⚠️ Proxy/VPN")
-            if ip_info.get("is_hosting"):
-                flags.append("⚠️ Hébergement dédié")
-            flag_str = " ".join(flags) if flags else "✅"
-            md += (f"**Infrastructure**: IP `{ip_info.get('ip')}` — "
-                   f"{ip_info.get('country', '?')} — "
-                   f"{ip_info.get('isp', '?')} — "
-                   f"ASN: `{ip_info.get('asn', '?')}` {flag_str}\n\n")
+    # IP / ASN
+    ip_info = ti.get("ip_info") or {}
+    if ip_info and not ip_info.get("error"):
+        ip_flags = []
+        if ip_info.get("is_proxy"):   ip_flags.append("⚠️ Proxy/VPN")
+        if ip_info.get("is_hosting"): ip_flags.append("⚠️ Hébergement dédié")
+        ip_status = "🔴" if ip_flags else "🟢"
+        md += f"| IP | `{ip_info.get('ip','?')}` | {ip_status} |\n"
+        md += f"| ISP / Hébergeur | {ip_info.get('isp','?')} | |\n"
+        md += f"| ASN | `{ip_info.get('asn','?')}` — {ip_info.get('org','?')} | |\n"
+        md += f"| Géolocalisation | {ip_info.get('country','?')} / {ip_info.get('city','?')} | |\n"
+        if ip_flags:
+            md += f"| Flags infrastructure | {' · '.join(ip_flags)} | 🔴 |\n"
 
-    md += "## AI Forensic Analysis\n"
+    md += "\n"
+
+    # ── LLM Forensic Analysis (main) ─────────────────────────────────────
+    md += "## 🧠 Analyse Forensique IA\n\n"
     md += f"{llm_summary}\n\n"
 
-    # Network IOC section
+    # ── Network IOC ───────────────────────────────────────────────────────
     network_ioc = consolidated_data.get("network_ioc_analysis", "")
     if network_ioc:
-        md += "## Analyse des Artefacts Réseau & IOCs\n"
+        md += "## 🕸️ Artefacts Réseau & IOCs Dynamiques\n\n"
         md += f"{network_ioc}\n\n"
 
-    md += "## Deep Agentic Analysis (User Journey)\n"
-    md += ("The automated engine performed a deep dive, simulating a victim's complete path to the payload. "
-           "Below is the step-by-step analysis performed by the AI Agent.\n\n")
-
-    ref_region = consolidated_data["regions"][0]
-    llm = LLMAnalyzer(model=model)
-
-    if ref_region.get("interaction_journey"):
-        steps = ref_region["interaction_journey"]
-        logger.info(f"Generating report for {len(steps)} steps.")
-
-        # ── Summary table ──
-        md += "### Résumé du parcours\n\n"
-        md += "| # | Action | URL | Suspicion |\n"
-        md += "|---|--------|-----|-----------|\n"
-        for i, step in enumerate(steps):
-            desc_short = step['description'][:60] + ("…" if len(step['description']) > 60 else "")
-            url_short = (step.get('url') or 'N/A')
-            url_short = url_short[:60] + ("…" if len(url_short) > 60 else "")
-            patterns = step.get('ai_patterns') or {}
-            score = patterns.get('suspicion_score')
-            score_str = f"**{score}%**" if score is not None else "—"
-            md += f"| {i+1} | {desc_short} | `{url_short}` | {score_str} |\n"
+    # ── Network log — POST submissions table ──────────────────────────────
+    network_log = ref_region.get("network_log", [])
+    post_subs   = [e for e in network_log if e.get("type") == "post_submission"]
+    if post_subs:
+        md += "## 📤 Soumissions POST Capturées\n\n"
+        md += "| # | Endpoint | Payload (extrait) |\n"
+        md += "|---|----------|-------------------|\n"
+        for idx, ps in enumerate(post_subs[:10], 1):
+            raw = ps.get("content", b"")
+            payload = (raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw))[:200]
+            payload = payload.replace("|", "\\|").replace("\n", " ")
+            url_short = (ps.get("url") or "?")[:80]
+            md += f"| {idx} | `{url_short}` | `{payload}` |\n"
         md += "\n"
 
-        # ── Detailed steps ──
-        for i, step in enumerate(steps):
-            logger.info(f"Agentic Analysis: Analyzing step {i+1}/{len(steps)}...")
-            try:
-                insight = llm.analyze_journey_step(step)
-            except Exception as e:
-                logger.error(f"LLM Step Analysis failed for step {i}: {e}")
-                insight = "(Analysis failed due to LLM error)"
+    # ── Network log — all requests (condensed) ────────────────────────────
+    all_requests = [e for e in network_log if e.get("type") in ("request", "response")]
+    if all_requests:
+        md += "<details>\n<summary>📡 Journal réseau complet ({} requêtes)</summary>\n\n".format(len(all_requests))
+        md += "| Méthode | URL | Status | Type |\n"
+        md += "|---------|-----|--------|------|\n"
+        for req in all_requests[:80]:
+            method = req.get("method", "GET")
+            req_url = (req.get("url") or "?")[:90]
+            status = req.get("status", "")
+            ctype  = (req.get("content_type") or "")[:30]
+            md += f"| {method} | `{req_url}` | {status} | {ctype} |\n"
+        md += "\n</details>\n\n"
 
-            # Step header with emoji marker
-            desc = step['description']
-            if "PAYMENT" in desc.upper() or "PAIEMENT" in desc.upper():
+    # ── Deep Agentic Journey ──────────────────────────────────────────────
+    md += "## 🤖 Parcours Agentique — Simulation Victime\n\n"
+    md += ("> L'engine a simulé le parcours complet d'une victime, étape par étape, "
+           "en cliquant automatiquement sur les CTAs, remplissant les formulaires "
+           "et capturant chaque écran + artefact JS.\n\n")
+
+    llm_obj = LLMAnalyzer(model=model)
+    steps = ref_region.get("interaction_journey", [])
+
+    if steps:
+        logger.info(f"Generating technical step analysis for {len(steps)} steps.")
+
+        # Journey timeline table
+        md += "### Chronologie du parcours\n\n"
+        md += "| # | Étape | URL | Suspicion | Scripts chargés |\n"
+        md += "|---|-------|-----|-----------|------------------|\n"
+        for i, step in enumerate(steps):
+            desc_s = step["description"][:55] + ("…" if len(step["description"]) > 55 else "")
+            url_s  = (step.get("url") or "N/A")[:55] + ("…" if len(step.get("url","")) > 55 else "")
+            pats   = step.get("ai_patterns") or {}
+            sc     = pats.get("suspicion_score")
+            score_s = f"**{sc}%**" if sc is not None else "—"
+            n_scripts = len(step.get("scripts") or [])
+            md += f"| {i+1} | {desc_s} | `{url_s}` | {score_s} | {n_scripts} |\n"
+        md += "\n"
+
+        # Detailed steps
+        for i, step in enumerate(steps):
+            desc = step["description"]
+            url  = step.get("url", "?")
+
+            if "PAIEMENT" in desc.upper() or "PAYMENT" in desc.upper():
                 marker = "💳"
-            elif "captcha" in desc.lower() or "CAPTCHA" in desc:
+            elif "captcha" in desc.lower():
                 marker = "🛡️"
-            elif "Form Auto-Fill" in desc:
+            elif "Form Auto-Fill" in desc or "formulaire" in desc.lower():
                 marker = "📝"
             elif i == 0:
                 marker = "🏁"
+            elif "CTA" in desc:
+                marker = "⚡"
             else:
                 marker = "➡️"
 
-            md += f"### {marker} Étape {i+1} : {step['description']}\n"
-            md += f"**URL** : `{step.get('url', 'unknown')}`\n\n"
-            md += f"> **Agent Insight** : {insight}\n\n"
+            md += f"### {marker} Étape {i+1} — {desc}\n\n"
+            md += f"**URL** : `{url}`\n\n"
 
-            # AI patterns block
-            patterns = step.get('ai_patterns') or {}
-            if patterns and patterns.get('detected_patterns'):
+            # AI patterns
+            pats = step.get("ai_patterns") or {}
+            if pats.get("detected_patterns"):
                 md += "**Patterns détectés** : "
-                md += " · ".join([f"`{p}`" for p in patterns['detected_patterns']]) + "\n\n"
-            if patterns.get('brand_impersonation') and patterns['brand_impersonation'] not in ('null', 'None', None):
-                md += f"**Marque usurpée** : `{patterns['brand_impersonation']}`\n\n"
-            if patterns.get('has_data_harvesting_form'):
-                md += "> ⚠️ **Formulaire de collecte de données détecté**\n\n"
+                md += " · ".join(f"`{p}`" for p in pats["detected_patterns"]) + "\n\n"
+            brand = pats.get("brand_impersonation")
+            if brand and brand not in ("null", "None", None, ""):
+                md += f"**Marque usurpée** : `{brand}`\n\n"
+            if pats.get("has_data_harvesting_form"):
+                md += "> ⚠️ **Formulaire de collecte de données personnelles détecté**\n\n"
 
-            img_name = os.path.basename(step['screenshot_path'])
-            md += f"![Étape {i+1}]({img_name})\n\n"
+            # JS scripts loaded at this step
+            scripts = step.get("scripts") or []
+            if scripts:
+                md += "<details>\n<summary>🔧 Scripts JS chargés à cette étape ({})</summary>\n\n".format(len(scripts))
+                md += "```\n"
+                for sc in scripts[:15]:
+                    md += sc[:150] + "\n"
+                md += "```\n\n</details>\n\n"
 
-            md += "---\n"
+            # LLM technical analysis
+            logger.info(f"Step {i+1}/{len(steps)} — LLM forensic analysis…")
+            try:
+                insight = llm_obj.analyze_journey_step(step)
+            except Exception as e:
+                logger.error(f"LLM step analysis failed: {e}")
+                insight = "_Analyse indisponible (timeout)._"
+
+            md += f"{insight}\n\n"
+
+            # Screenshot
+            img_name = os.path.basename(step.get("screenshot_path", ""))
+            if img_name:
+                md += f"![Étape {i+1} — {desc[:40]}]({img_name})\n\n"
+
+            md += "---\n\n"
     else:
-        md += "_No interactive steps triggered._\n\n"
+        md += "_Aucune étape interactive capturée._\n\n"
 
-
-    md += "## Regional Analysis\n"
+    # ── Regional summary ──────────────────────────────────────────────────
+    md += "## 🌍 Analyse par Région\n\n"
     for r in consolidated_data["regions"]:
         code = r["region"]
-        md += f"### Region: {code}\n"
-        md += f"![Screenshot {code}](screenshot_{code}.png)\n\n"
+        chain = r.get("redirect_chain", [])
+        md += f"### Région : {code}\n\n"
 
-        md += "**Redirect Chain:**\n"
-        for i, hop in enumerate(r['redirect_chain']):
-            md += f"{i+1}. `{hop['url']}` ({hop.get('status', '???')})\n"
+        if chain:
+            md += "**Chaîne de redirections :**\n\n"
+            md += "| # | URL | Status |\n"
+            md += "|---|-----|--------|\n"
+            for j, hop in enumerate(chain):
+                status = hop.get("status", "?")
+                s_icon = "🔴" if str(status).startswith(("4","5")) else ("🟡" if str(status).startswith("3") else "🟢")
+                md += f"| {j+1} | `{hop['url'][:90]}` | {s_icon} {status} |\n"
+            md += "\n"
 
-        if r['inputs']:
-            md += f"\n**Data Collection detected**: {len(r['inputs'])} inputs found.\n"
+        inputs = r.get("inputs", [])
+        if inputs:
+            md += f"**Champs de saisie détectés** ({len(inputs)}) :\n\n"
+            md += "| Nom | Type | ID |\n|-----|------|----|\n"
+            for inp in inputs[:15]:
+                md += f"| `{inp.get('name','?')}` | `{inp.get('type','text')}` | `{inp.get('id','')}` |\n"
+            md += "\n"
         else:
-            md += "\n**Data Collection**: No forms visible.\n"
+            md += "**Collecte de données** : Aucun formulaire visible.\n\n"
 
+        md += f"![Screenshot {code}](screenshot_{code}.png)\n\n"
         md += "---\n\n"
 
-    md += "## Artifacts & Obfuscation\n"
-    seen_urls = set()
+    # ── Artifacts & Obfuscation ───────────────────────────────────────────
+    seen_urls: set = set()
+    artifacts = []
     for r in consolidated_data["regions"]:
-        for f in r["files_extracted"]:
+        for f in r.get("files_extracted", []):
             if f["url"] not in seen_urls:
                 seen_urls.add(f["url"])
-                md += f"### {f['type'].upper()}: `{f['url']}`\n"
-                analysis = f.get("analysis", {})
-                if analysis.get("obfuscation_detected"):
-                    md += "> **Obfuscation Detected**\n"
-                    md += f"> Entropy: {analysis.get('entropy_score', 0):.2f}\n"
-                if analysis.get("ai_explanation"):
-                    md += f"> **AI Analysis**: {analysis.get('ai_explanation')}\n"
-                if analysis.get("deobfuscated_preview"):
-                    md += "#### Deobfuscated Preview:\n```javascript\n"
-                    md += analysis["deobfuscated_preview"][:800] + "\n...\n```\n"
-                md += "\n"
+                artifacts.append(f)
+
+    if artifacts:
+        md += "## 🧩 Artefacts & Obfuscation\n\n"
+        for f in artifacts:
+            analysis = f.get("analysis", {})
+            obf = analysis.get("obfuscation_detected", False)
+            entropy = analysis.get("entropy_score", 0)
+            obf_icon = "🔴 **OBFUSQUÉ**" if obf else "🟢 Clair"
+            md += f"### `{f['type'].upper()}` — `{f['url']}`\n\n"
+            md += f"| Attribut | Valeur |\n|----------|--------|\n"
+            md += f"| Obfuscation | {obf_icon} |\n"
+            md += f"| Entropie Shannon | `{entropy:.2f}` |\n"
+            if analysis.get("ai_explanation"):
+                md += f"| Analyse IA | {analysis['ai_explanation'][:200]} |\n"
+            md += "\n"
+            if analysis.get("deobfuscated_preview"):
+                md += "<details>\n<summary>📄 Aperçu déobfusqué</summary>\n\n```javascript\n"
+                md += analysis["deobfuscated_preview"][:1000] + "\n…\n```\n\n</details>\n\n"
+            md += "\n"
+
+    # ── Footer ─────────────────────────────────────────────────────────────
+    md += "---\n\n"
+    md += f"*Rapport généré automatiquement par PhishHunter · {scan_time}*\n"
 
     report_path = os.path.join(output_dir, "FINAL_REPORT.md")
     with open(report_path, "w", encoding="utf-8") as f:

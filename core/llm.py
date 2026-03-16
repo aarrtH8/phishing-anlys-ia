@@ -80,93 +80,236 @@ Sois concis (4-5 phrases max). Réponds en français.
         return result or "Analyse indisponible."
 
     def analyze_journey_step(self, step_data: dict) -> str:
-        """Analyzes a specific step in the user journey."""
+        """Deep forensic analysis of a single interaction step."""
         import re as _re
-        # Extract visible text from HTML (strip tags) rather than sending raw markup
+
         html = step_data.get('html', '') or ''
+
+        # ── Extract form fields ──────────────────────────────────────────
+        form_fields = []
+        for m in _re.finditer(r'<input[^>]+>', html, _re.IGNORECASE):
+            tag = m.group(0)
+            name  = (_re.search(r'name=["\']([^"\']+)["\']', tag) or _re.search(r'name=(\S+)', tag))
+            ftype = (_re.search(r'type=["\']([^"\']+)["\']', tag) or _re.search(r'type=(\S+)', tag))
+            fid   = _re.search(r'id=["\']([^"\']+)["\']', tag)
+            form_fields.append({
+                "name":  name.group(1)  if name  else "?",
+                "type":  ftype.group(1) if ftype else "text",
+                "id":    fid.group(1)   if fid   else "",
+            })
+
+        # ── Extract script snippets (first 300 chars each, max 4) ────────
+        scripts_inline = []
+        for m in _re.finditer(r'<script[^>]*>(.*?)</script>', html, _re.DOTALL | _re.IGNORECASE):
+            s = m.group(1).strip()
+            if len(s) > 30:
+                scripts_inline.append(s[:300])
+            if len(scripts_inline) >= 4:
+                break
+
+        # ── External script sources ──────────────────────────────────────
+        script_srcs = _re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, _re.IGNORECASE)
+
+        # ── Hidden fields (common exfil technique) ───────────────────────
+        hidden_fields = [f for f in form_fields if f.get("type") == "hidden"]
+
+        # ── Visible text (clean) ─────────────────────────────────────────
         visible_text = _re.sub(r'<[^>]+>', ' ', html)
-        visible_text = _re.sub(r'\s+', ' ', visible_text).strip()[:800]
+        visible_text = _re.sub(r'\s+', ' ', visible_text).strip()[:600]
 
-        prompt = f"""
-        Analyse this Phishing Interaction Step.
+        # ── Scripts captured by browser instrumentation ──────────────────
+        browser_scripts = step_data.get('scripts', [])[:10]
 
-        Step: {step_data.get('step')}
-        Action Taken: {step_data.get('description')}
-        Current URL: {step_data.get('url')}
-        Visible Page Text:
-        {visible_text}
+        prompt = f"""Tu es un analyste CTI (Cyber Threat Intelligence) de niveau expert.
+Effectue une analyse forensique technique et précise de cette étape d'un parcours de phishing.
 
-        Question:
-        What is the attacker trying to do here? (e.g. build trust, simulate loading, extract data, redirect).
-        Be very brief (1-2 sentences). Réponds en français.
-        """
-        result = self._call_ollama({"model": self.model, "prompt": prompt, "stream": False}, timeout=30, retries=2)
-        return result or "Analyse ignorée."
+━━━ CONTEXTE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Étape   : {step_data.get('step')}
+Action  : {step_data.get('description')}
+URL     : {step_data.get('url')}
+━━━ FORMULAIRE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Champs trouvés ({len(form_fields)}) : {json.dumps(form_fields[:10])}
+Champs cachés  : {json.dumps(hidden_fields)}
+━━━ JAVASCRIPT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scripts externes : {json.dumps(script_srcs[:8])}
+Scripts inline   : {json.dumps(scripts_inline)}
+Scripts navigateur: {json.dumps(browser_scripts)}
+━━━ TEXTE VISIBLE ━━━━━━━━━━━━━━━━━━━━━━━━
+{visible_text}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Produis une analyse technique structurée en Markdown. Sois précis et concis. Format OBLIGATOIRE :
+
+**🎯 Objectif de l'attaquant** : [phrase courte — ex: collecte d'adresse postale, simulation confiance, exfil CB]
+
+**🔍 Technique d'ingénierie sociale** : [nom précis — ex: Fake Package Tracking, Urgency Pressure, Brand Impersonation La Poste]
+
+**📋 Champs de collecte** : [liste des champs et ce qu'ils récoltent — ex: `nom`, `adresse`, `code_postal` → profilage géographique]
+
+**💻 Comportement JS** : [ce que font les scripts — fonctions détectées, tracking pixels, obfuscation base64/eval, appels externes]
+
+**🔗 Endpoint de réception** : [URL POST cible si détectable, sinon "non visible à cette étape"]
+
+**⚠️ Indicateurs de compromission (IOC)** : [domaines tiers, pixels tracking, URLs suspectes dans le HTML]
+
+**📊 Sévérité de cette étape** : [RECONNAISSANCE / INGÉNIERIE SOCIALE / COLLECTE DONNÉES / EXFILTRATION / PAIEMENT]
+
+Réponds uniquement en français. Pas d'introduction générique.
+"""
+        result = self._call_ollama(
+            {"model": self.model, "prompt": prompt, "stream": False},
+            timeout=60, retries=2
+        )
+        return result or "_Analyse de l'étape indisponible (timeout LLM)._"
 
     def analyze_report(self, report_data: dict) -> str:
-        """Sends the report JSON to Ollama for a security summary."""
-
-        journey_desc = "\n".join([f"- {s['step']}: {s['description']} (URL: {s.get('url','?')})" for s in report_data.get('interaction_journey', [])])
+        """Deep forensic LLM report — CTI-grade, structured, technical."""
 
         chain = report_data.get('redirect_chain', [])
-        final_url = chain[-1].get('url') if chain else report_data.get('target_url', 'Unknown')
+        final_url = chain[-1].get('url', '?') if chain else report_data.get('target_url', '?')
 
-        # Include visual analysis findings
+        # Build redirect chain text
+        chain_text = "\n".join(
+            f"  {i+1}. [{h.get('status','?')}] {h.get('url','?')}"
+            for i, h in enumerate(chain)
+        ) or "  (aucune redirection)"
+
+        # POST submissions
+        post_submissions = [e for e in report_data.get("network_log", []) if e.get("type") == "post_submission"]
+        post_text = ""
+        for ps in post_submissions[:6]:
+            raw = ps.get("content", b"")
+            data_str = (raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw))[:400]
+            post_text += f"  POST → {ps.get('url', '?')}\n  Payload: {data_str}\n"
+        if not post_text:
+            post_text = "  Aucune soumission POST capturée"
+
+        # Input fields
+        inputs = report_data.get('inputs', [])
+        inputs_text = ", ".join(
+            f"`{i.get('name') or i.get('id') or '?'}` ({i.get('type','text')})"
+            for i in inputs[:12]
+        ) or "Aucun"
+
+        # Journey summary
+        journey = report_data.get('interaction_journey', [])
+        journey_text = "\n".join(
+            f"  [{s.get('step')}] {s.get('description','?')} | URL: {s.get('url','?')} | "
+            f"Suspicion: {s.get('ai_patterns',{}).get('suspicion_score','?')}%"
+            for s in journey
+        ) or "  (aucune interaction)"
+
+        # Visual analysis
         visual = report_data.get('visual_analysis', {}) or {}
-        visual_info = ""
+        visual_text = ""
         if visual:
-            visual_info = (
-                f"\nVISUAL ANALYSIS:\n"
-                f"  Brand detected: {visual.get('brand_detected', 'None')}\n"
-                f"  Logos found: {visual.get('logos_found', [])}\n"
-                f"  OCR text snippet: {str(visual.get('ocr_text', ''))[:200]}\n"
+            visual_text = (
+                f"  Marque visuelle détectée : {visual.get('brand_detected','?')}\n"
+                f"  Logos identifiés        : {visual.get('logos_found',[])}\n"
+                f"  OCR extrait             : {str(visual.get('ocr_text',''))[:250]}\n"
             )
 
-        # Summarise POST submissions for the report
-        post_submissions = [e for e in report_data.get("network_log", []) if e.get("type") == "post_submission"]
-        post_info = ""
-        if post_submissions:
-            post_info = f"\nSOUMISSIONS POST ({len(post_submissions)}):\n"
-            for ps in post_submissions[:5]:
-                raw = ps.get("content", b"")
-                data_str = (raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw))[:300]
-                post_info += f"  → {ps.get('url', '?')} | data: {data_str}\n"
+        # Collected scripts (from journey steps)
+        all_scripts: list = []
+        for s in journey:
+            for sc in (s.get('scripts') or []):
+                if sc not in all_scripts:
+                    all_scripts.append(sc)
+        scripts_text = "\n".join(f"  - {sc[:120]}" for sc in all_scripts[:15]) or "  Aucun"
 
-        prompt = f"""Tu es un Expert en Cybersécurité chargé d'analyser objectivement un scan de site web.
-Tu dois distinguer les vrais sites de phishing des sites légitimes. NE PAS sur-conclure.
+        # Files extracted
+        files_text = ""
+        for f in report_data.get('files_extracted', [])[:6]:
+            ai = f.get('analysis', {})
+            files_text += (
+                f"  [{f.get('type','?').upper()}] {f.get('url','?')}\n"
+                f"    Obfuscation: {ai.get('obfuscation_detected', False)} | "
+                f"Entropy: {ai.get('entropy_score',0):.2f}\n"
+                f"    AI: {ai.get('ai_explanation','')[:150]}\n"
+            )
+        files_text = files_text or "  Aucun artefact"
 
-DONNÉES:
-Cible: {report_data.get('target_url')}
-Chaîne de redirections: {len(chain)} saut(s). URL finale: {final_url}
-Champs de saisie: {len(report_data.get('inputs', []))} (types: {[i.get('type') for i in report_data.get('inputs', [])[:5]]})
-{visual_info}{post_info}
-PARCOURS INTERACTIF (simulation victime):
-{journey_desc}
+        prompt = f"""Tu es un analyste CTI senior (OSCP/CEH). Tu rédiges un rapport forensique de qualité professionnelle.
+Tes analyses sont citées dans des procédures judiciaires et des rapports d'incident d'entreprise.
+Sois précis, factuel, technique. NE PAS inventer de données absentes. NE PAS sur-conclure.
 
-ARTEFACTS TÉLÉCHARGÉS:
-{json.dumps(report_data.get('files_extracted', []), indent=2)[:1500]}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DONNÉES BRUTES DU SCAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Cible initiale    : {report_data.get('target_url')}
+URL finale        : {final_url}
+Région simulée    : {report_data.get('region','?')}
 
-CONSIGNES IMPORTANTES:
-- Si le domaine analysé est un site connu et légitime (ex: anthropic.com, google.com, github.com, microsoft.com, etc.), indique clairement que c'est un SITE LÉGITIME et arrête-toi là.
-- N'invente pas de techniques d'attaque si les preuves ne le justifient pas.
-- Un formulaire de connexion standard sur un domaine légitime N'EST PAS du phishing.
-- Base-toi sur des faits concrets (URLs suspectes, données POST exfiltrées, domaine récent, fausse marque).
+CHAÎNE DE REDIRECTIONS ({len(chain)} saut(s)):
+{chain_text}
 
-TÂCHE — Rédige un Rapport Forensique Objectif en Markdown:
-1. **Verdict** : SITE LÉGITIME / PHISHING PROBABLE / PHISHING CONFIRMÉ — avec justification en 1-2 phrases.
-2. **Résumé exécutif** : Nature du site, marque éventuellement usurpée, objectif détecté.
-3. **Analyse des preuves** : Cite uniquement les étapes/artefacts qui prouvent l'intention (ou l'absence d'intention malveillante).
-4. **Techniques d'attaque** (uniquement si phishing détecté) : Mécanismes utilisés.
-5. **Mapping MITRE ATT&CK** (uniquement si phishing détecté).
-6. **IOCs extraits** : Domaines, IPs, URLs suspects identifiés (ou "Aucun IOC suspect" si site légitime).
-7. **Évaluation de la sévérité** : NON APPLICABLE / FAIBLE / MOYEN / ÉLEVÉ / CRITIQUE.
-8. **Recommandations** : Adaptées au verdict.
+CHAMPS DE SAISIE DÉTECTÉS ({len(inputs)}):
+{inputs_text}
 
-Utilise le gras pour les points clés. Réponds entièrement en français.
+SOUMISSIONS POST CAPTURÉES:
+{post_text}
+
+PARCOURS VICTIME SIMULÉ ({len(journey)} étapes):
+{journey_text}
+
+ANALYSE VISUELLE:
+{visual_text or "  Non disponible"}
+
+SCRIPTS DÉTECTÉS:
+{scripts_text}
+
+ARTEFACTS JS/HTML:
+{files_text}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RÈGLES :
+- Si c'est un site légitime connu → verdict SITE LÉGITIME, arrêt immédiat sans inventer d'attaque.
+- Cite uniquement les preuves présentes dans les données ci-dessus.
+- Utilise des termes techniques précis (typosquatting, credential harvesting, redirect chain, etc.)
+
+Rédige le rapport forensique complet en Markdown, en français, avec ces sections EXACTES :
+
+## 🏛️ Verdict
+**[SITE LÉGITIME | PHISHING PROBABLE | PHISHING CONFIRMÉ]**
+> Justification en 1-2 phrases factuelles.
+
+## 📋 Résumé Exécutif
+[2-3 phrases : nature de la campagne, marque usurpée, objectif final de l'attaquant]
+
+## 🔬 Analyse Technique de la Chaîne d'Attaque
+[Décris la mécanique complète : infrastructure → leurre → collecte → exfiltration. Cite les URLs exactes.]
+
+## 🧬 Techniques d'Attaque Identifiées
+| # | Technique | Description Technique | Preuve |
+|---|-----------|----------------------|--------|
+[Remplis ce tableau. Ex: Fake Package Tracking, Urgency Pressure, Multi-Step Credential Harvest, DOM Manipulation, Pixel Tracking]
+
+## 🗺️ Mapping MITRE ATT&CK for Enterprise
+| ID | Tactic | Technique | Justification |
+|----|--------|-----------|---------------|
+[Ex: T1566.002, T1204.001, T1056.003, T1071.001, T1036.005 — uniquement les IDs pertinents]
+
+## 🎯 Indicateurs de Compromission (IOCs)
+| Type | Valeur | Contexte |
+|------|--------|---------|
+[Domaines, IPs, URLs, hashes, patterns POST extraits des données. Type = DOMAIN/IP/URL/POST-ENDPOINT/TRACKING-PIXEL]
+
+## 🛠️ Infrastructure & Hébergement
+[Hébergeur, CDN détecté, géolocalisation probable, anomalies DNS/SSL, plateformes tierces utilisées (Google Storage, Cloudflare, etc.)]
+
+## ⚖️ Évaluation de la Sévérité
+**Sévérité globale** : [CRITIQUE | ÉLEVÉE | MOYENNE | FAIBLE | NON APPLICABLE]
+**Impact potentiel victime** : [Vol d'identité / Vol financier / Credential stuffing / Aucun]
+**Sophistication de l'attaque** : [1-10] — [justification courte]
+
+## 💡 Recommandations
+[Actions concrètes : blocage IOC, signalement plateformes, protection utilisateurs]
 """
-
-        logger.info(f"[LLM] Sending forensic report analysis to Ollama (model: {self.model})...")
-        result = self._call_ollama({"model": self.model, "prompt": prompt, "stream": False}, timeout=120)
+        logger.info(f"[LLM] Envoi analyse forensique complète → Ollama ({self.model})…")
+        result = self._call_ollama(
+            {"model": self.model, "prompt": prompt, "stream": False},
+            timeout=180
+        )
         if result:
             return result
         return "**Analyse indisponible** : Ollama ne répond pas. Vérifiez que `ollama serve` est lancé."
