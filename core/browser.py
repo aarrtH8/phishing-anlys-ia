@@ -1117,47 +1117,116 @@ class BrowserManager:
             logger.warning(f"👁️ Visual solver error: {e}")
             return False
 
+    async def _click_locator(self, locator, label: str = "") -> bool:
+        """Scroll element into view then click it. Returns True on success."""
+        try:
+            await locator.scroll_into_view_if_needed(timeout=2000)
+            await asyncio.sleep(0.3)
+            await locator.click(force=True, timeout=3000)
+            logger.info(f"✅ Clicked: {label or 'element'}")
+            return True
+        except Exception as e:
+            logger.debug(f"_click_locator failed for '{label}': {e}")
+            return False
+
+    async def _capture_page_scripts(self, page) -> List[str]:
+        """Extract all inline and external JS URLs/content from the current page."""
+        try:
+            return await page.evaluate("""
+            () => {
+                const scripts = [];
+                document.querySelectorAll('script').forEach(s => {
+                    if (s.src) scripts.push(s.src);
+                    else if (s.textContent.trim().length > 20) scripts.push('[inline] ' + s.textContent.trim().slice(0, 500));
+                });
+                return scripts;
+            }
+            """)
+        except Exception:
+            return []
+
     async def smart_interact(self, page) -> List[Dict[str, Any]]:
         """
-        AI-Powered Adaptive Crawler: Interacts with the page using intelligent phishing detection.
-        - Uses AI to analyze and rank elements proactively
-        - Detects phishing patterns at each step
-        - Combines heuristic + AI scoring (30% heuristic, 70% AI)
-        - Detects loops/stagnation and switches to exhaustive clicking.
+        AI-Powered Adaptive Crawler — follows a phishing campaign to its end.
+
+        Key improvements:
+        - scroll_into_view before every click (handles off-screen buttons)
+        - LLM analysis cached per URL (no re-analysis loop on same page)
+        - Fast-track hash tracking (won't re-click same CTA)
+        - Extended CTA keyword list (Continuer, Suivant, >, Valider, etc.)
+        - JS capture at each step for deep analysis
+        - Better stagnation recovery: scroll-to-bottom + brute-force first button
         """
         journey_log = []
-        max_steps = 25 
-        
-        # Tracking State
-        seen_states = set() # Hash of (URL + HTML snippet)
-        clicked_hashes = set() # Hash of button text/selector
+        max_steps = 30
+
+        # ── Tracking State ────────────────────────────────────────────────
+        seen_states: set  = set()   # hash(URL + body text)
+        clicked_hashes: set = set() # hash(text + outerHTML) — globally deduped
+        fast_track_clicked: set = set()  # hash(innerText) for fast-track CTA buttons
         stagnation_count = 0
         loading_wait_count = 0
-        form_was_filled = False  # track whether a form was submitted
-        
-        # Initial State
-        await page.wait_for_load_state("networkidle")
-        try: init_html = await page.content()
-        except: init_html = ""
-        
-        # Initial AI Pattern Detection
+        form_was_filled = False
+        last_analyzed_url = None   # avoid re-running LLM on same URL
+        cached_patterns = {}       # url → patterns dict
+
+        # ── CTA keyword lists ─────────────────────────────────────────────
+        priority_keywords = [
+            # French
+            "réclamer", "recevoir", "confirmer", "valider", "vérifier", "gagner",
+            "obtenir", "participer", "récupérer", "profiter", "commencer le sondage",
+            # English
+            "claim", "receive", "confirm", "verify", "win", "prize", "get", "participate",
+        ]
+        nav_keywords = [
+            # French — "Continuer >" included via "continuer"
+            "commencer", "sondage", "continuer", "suivant", "suite", "procéder",
+            "oui", "non", "démarrer", "participer", "répondre",
+            "questionnaire", "enquête", "accepter", "valider",
+            # English
+            "start", "survey", "continue", "next", "yes", "no", "begin",
+            "accept", "proceed", "submit",
+        ]
+        # Regex for fast-track CTA detection (broad, case-insensitive)
+        _ft_re = re.compile(
+            r"commencer|continuer|suivant|suite|start|continue|next|proceed|"
+            r"réclamer|claim|valider|accepter|confirm|sondage|survey",
+            re.IGNORECASE
+        )
+
+        # ── Initial Page Load ─────────────────────────────────────────────
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        try:
+            init_html = await page.content()
+        except Exception:
+            init_html = ""
+
         logger.info("🤖 AI: Analyzing initial page for phishing patterns...")
         initial_patterns = self.llm.detect_phishing_patterns(init_html, page.url)
-        initial_score = initial_patterns.get('suspicion_score', 0)
-        is_legit = initial_patterns.get('is_legitimate_site', False)
-        logger.info(f"🤖 AI Initial Analysis: Suspicion={initial_score}%, Légitime={is_legit}, Patterns={initial_patterns.get('detected_patterns', [])}")
+        initial_score = initial_patterns.get("suspicion_score", 0)
+        is_legit = initial_patterns.get("is_legitimate_site", False)
+        logger.info(
+            f"🤖 Initial Analysis — Suspicion={initial_score}% Légitime={is_legit} "
+            f"Patterns={initial_patterns.get('detected_patterns', [])}"
+        )
+        cached_patterns[page.url] = initial_patterns
+        last_analyzed_url = page.url
 
-        # If AI immediately identifies a legitimate site with very low suspicion, stop interaction
+        # Early exit for legitimate sites
         if is_legit and initial_score < 15:
             journey_log.append({
                 "step": "step_00_initial",
-                "description": f"Page initiale — site légitime détecté (suspicion: {initial_score}%)",
+                "description": f"Site légitime détecté (suspicion: {initial_score}%) — exploration minimale.",
                 "screenshot": await page.screenshot(full_page=True),
                 "url": page.url,
                 "html": init_html,
-                "ai_patterns": initial_patterns
+                "ai_patterns": initial_patterns,
+                "scripts": await self._capture_page_scripts(page),
             })
-            logger.info("✅ Site identifié comme légitime par l'IA — exploration minimale.")
+            logger.info("✅ Site légitime — arrêt de l'exploration.")
             return journey_log
 
         journey_log.append({
@@ -1166,404 +1235,414 @@ class BrowserManager:
             "screenshot": await page.screenshot(full_page=True),
             "url": page.url,
             "html": init_html,
-            "ai_patterns": initial_patterns
+            "ai_patterns": initial_patterns,
+            "scripts": await self._capture_page_scripts(page),
         })
-        
-        # Keywords for heuristic scoring - Extended French phishing detection
-        priority_keywords = [
-            # French
-            "réclamer", "recevoir", "confirmer", "valider", "vérifier", "gagner", "obtenir", "participer",
-            "commencer le sondage", "répondre au sondage", "récupérer", "profiter",
-            # English
-            "claim", "receive", "confirm", "verify", "win", "prize", "get", "participate"
-        ]
-        nav_keywords = [
-            # French
-            "commencer", "sondage", "continuer", "suivant", "oui", "non", "démarrer", "participer",
-            "répondre", "questionnaire", "enquête", "accepter",
-            # English
-            "start", "survey", "continue", "next", "yes", "no", "begin", "accept"
-        ]
-        
+
+        # ── Main Interaction Loop ─────────────────────────────────────────
         for i in range(1, max_steps + 1):
-            logger.info(f"--- Interaction Step {i}/{max_steps} ---")
-            await asyncio.sleep(2)
-            
-            # 1. State Check & fake loading detection
-            try: content = await page.content()
-            except: content = ""
+            logger.info(f"━━━ Step {i}/{max_steps} ━━━")
+            await asyncio.sleep(1.5)
+
+            # 1. Collect page state
+            try:
+                content = await page.content()
+            except Exception:
+                content = ""
             current_url = page.url
-            
-            # Simple state hash: URL + first 5000 chars of body text
-            try: body_text = await page.inner_text("body", timeout=1000)
-            except: body_text = ""
-            state_hash = hashlib.md5((current_url + body_text[:5000]).encode('utf-8')).hexdigest()
-            
+            try:
+                body_text = await page.inner_text("body", timeout=2000)
+            except Exception:
+                body_text = ""
+
+            # Stagnation detection
+            state_hash = hashlib.md5((current_url + body_text[:5000]).encode("utf-8")).hexdigest()
             if state_hash in seen_states:
-                logger.info(f"State Stagnation detected (Count: {stagnation_count})")
                 stagnation_count += 1
+                logger.info(f"⚠️  Stagnation ×{stagnation_count} (same state)")
             else:
                 stagnation_count = 0
                 seen_states.add(state_hash)
-            
-            # Check for fake loading screens
-            if "vérification" in content.lower() or "checking" in content.lower() or "patientez" in content.lower():
+
+            # 2. Fake loading screen — wait up to 3 rounds then ignore
+            low = content.lower()
+            if any(k in low for k in ("vérification", "checking", "patientez", "chargement", "loading")):
                 if loading_wait_count < 3:
-                    logger.info(f"Loading screen detected (Attempt {loading_wait_count+1}/3). Waiting...")
+                    logger.info(f"⏳ Loading screen (attempt {loading_wait_count + 1}/3) — waiting 4s…")
                     await asyncio.sleep(4)
                     loading_wait_count += 1
                     continue
-                else:
-                    logger.info("Loading screen persistent. Ignoring and forcing interaction.")
+                logger.info("⏳ Loading screen persistent — forcing interaction.")
             else:
                 loading_wait_count = 0
 
-            # 🍪 Cookie Banner Dismissal (before any interaction)
-            try:
-                _cookie_selectors = [
-                    # Accept/agree buttons
-                    "button#accept-cookie", "button#acceptAll", "button#accept_all",
-                    "button[id*='accept']", "button[class*='accept']",
-                    "button[id*='agree']", "button[class*='agree']",
-                    "a[id*='accept']", "a[class*='accept-cookie']",
-                    # French
-                    "button:has-text('Accepter tout')", "button:has-text('Tout accepter')",
-                    "button:has-text('Accepter')", "button:has-text('J\\'accepte')",
-                    "button:has-text('Continuer sans accepter')",
-                    # English
-                    "button:has-text('Accept all')", "button:has-text('Accept All')",
-                    "button:has-text('Accept cookies')", "button:has-text('I agree')",
-                    "button:has-text('OK')", "button:has-text('Got it')",
-                    # Generic consent wrappers
-                    "#cookie-accept", "#cookie-consent-accept", ".cookie-accept",
-                    "[data-testid*='cookie-accept']", "[aria-label*='cookie']",
-                ]
-                for _sel in _cookie_selectors:
+            # 3. Cookie banner dismissal
+            _cookie_sels = [
+                "button#accept-cookie", "button#acceptAll", "button#accept_all",
+                "button[id*='accept']", "button[class*='accept']",
+                "button[id*='agree']",  "button[class*='agree']",
+                "button:has-text('Accepter tout')", "button:has-text('Tout accepter')",
+                "button:has-text('Accepter')", "button:has-text('J\\'accepte')",
+                "button:has-text('Accept all')", "button:has-text('Accept All')",
+                "button:has-text('Accept cookies')", "button:has-text('I agree')",
+                "button:has-text('Got it')", "button:has-text('OK')",
+                "#cookie-accept", "#cookie-consent-accept", ".cookie-accept",
+            ]
+            for _sel in _cookie_sels:
+                try:
                     _loc = page.locator(_sel).first
                     if await _loc.count() > 0 and await _loc.is_visible():
                         logger.info(f"🍪 Dismissing cookie banner: {_sel}")
-                        await _loc.click(timeout=2000)
+                        await self._click_locator(_loc, _sel)
                         await asyncio.sleep(0.8)
                         break
+                except Exception:
+                    pass
+
+            # 4. CAPTCHA solver
+            captcha_solved = await self._solve_captcha(page)
+            if captcha_solved:
+                logger.info("🛡️ CAPTCHA bypassed — re-evaluating page…")
+                journey_log.append({
+                    "step": f"step_{i:02d}_captcha",
+                    "description": "CAPTCHA résolu",
+                    "screenshot": await page.screenshot(full_page=True),
+                    "url": page.url,
+                    "html": await page.content(),
+                    "scripts": await self._capture_page_scripts(page),
+                })
+                continue
+
+            # Halt if CAPTCHA is still active
+            try:
+                _ct = (await page.content()).lower()
+                if ("captcha" in page.url.lower() or "just a moment" in _ct
+                        or "cf-chl-widget" in _ct or "security-check" in _ct):
+                    logger.warning("🚨 CAPTCHA unsolved — arrêt pour éviter un bannissement.")
+                    journey_log.append({
+                        "step": f"step_{i:02d}_blocked",
+                        "description": "Bloqué par CAPTCHA non résolu.",
+                        "screenshot": await page.screenshot(full_page=True),
+                        "url": page.url,
+                        "html": _ct,
+                        "scripts": [],
+                    })
+                    break
             except Exception:
                 pass
 
-            # 🛡️ MULTI-TIER CAPTCHA SOLVER: AI → Heuristic → Manual Popup
-            captcha_solved = await self._solve_captcha(page)
-            if captcha_solved:
-                logger.info("🛡️ CAPTCHA bypassed - reloading state...")
-                journey_log.append({
-                    "step": f"step_{i:02d}_captcha",
-                    "description": "CAPTCHA bypassed (AI/Heuristic/Manual)",
-                    "screenshot": await page.screenshot(full_page=True),
-                    "url": page.url,
-                    "html": await page.content()
-                })
-                continue # IMPORTANT: Re-evaluate the new page structure safely
-                
-            # If CAPTCHA is active but unsolved, do NOT interact with anything else
+            # ── 5. FAST-TRACK CTA click ───────────────────────────────────
+            # Matches "Continuer >", "Suivant", "Start", etc. — scrolls into view first
+            clicked_fast = False
             try:
-                page_text = (await page.content()).lower()
-                is_captcha_active = "captcha" in page.url.lower() or "just a moment" in page_text or "cf-chl-widget" in page_text or "security-check" in page_text
-                if is_captcha_active:
-                    logger.warning("🚨 CAPTCHA is still active and unsolved. Halting exploration to prevent ban.")
-                    journey_log.append({
-                        "step": f"step_{i:02d}_blocked",
-                        "description": "Exploration halted: CAPTCHA unsolved.",
-                        "screenshot": await page.screenshot(full_page=True),
-                        "url": page.url,
-                        "html": await page.content()
-                    })
-                    break
-            except: pass
-
-            # ⚡ FAST PATH: Force click on "Commencer" / "Start" buttons proactively
-            try:
-                # Common priority keywords for phishing CTAs
-                fast_track_regex = re.compile(r"commencer|start|sondage|survey|continuer|continue|réclamer|claim", re.IGNORECASE)
-                # Find valid clickables using Playwright Locator (reliable)
-                fast_buttons = await page.locator('button, a, input[type="submit"], div[class*="btn"], div[role="button"]').filter(has_text=fast_track_regex).all()
-                clicked_fast = False
-                for btn in fast_buttons:
-                    if await btn.is_visible():
-                        # Verify text length to avoid clicking huge containers
+                ft_locator = page.locator(
+                    "button, a, input[type='submit'], div[role='button'], "
+                    "span[role='button'], div[class*='btn'], [onclick]"
+                ).filter(has_text=_ft_re)
+                ft_buttons = await ft_locator.all()
+                for btn in ft_buttons:
+                    try:
+                        if not await btn.is_visible():
+                            continue
                         txt = (await btn.inner_text()).strip()
-                        if len(txt) < 50: 
-                            logger.info(f"⚡ FAST TRACK: Clicking detected priority button: '{txt}'")
-                            # Highlight for screenshot
-                            await btn.evaluate("el => el.style.border = '5px solid red'")
-                            await asyncio.sleep(0.5)
-                            await btn.click(force=True, timeout=2000)
+                        if not txt or len(txt) > 60:
+                            continue
+                        ft_hash = hashlib.md5(txt.encode("utf-8")).hexdigest()
+                        if ft_hash in fast_track_clicked:
+                            continue  # already tried this exact button
+                        logger.info(f"⚡ FAST-TRACK: '{txt}'")
+                        await btn.evaluate("el => el.style.outline = '3px solid red'")
+                        await asyncio.sleep(0.3)
+                        if await self._click_locator(btn, txt):
+                            fast_track_clicked.add(ft_hash)
                             clicked_fast = True
-                            await asyncio.sleep(3) # Wait for reaction
-                            break # Only click one per cycle
-                
-                if clicked_fast:
-                    logger.info("⚡ Fast Track Action Taken - Reloading state...")
-                    continue # Skip AI analysis, re-evaluate page
+                            await asyncio.sleep(2.5)
+                            # Wait for navigation if any
+                            try:
+                                await page.wait_for_load_state("networkidle", timeout=5000)
+                            except Exception:
+                                pass
+                            # Capture step
+                            snap_html = await page.content()
+                            journey_log.append({
+                                "step": f"step_{i:02d}_cta",
+                                "description": f"⚡ CTA cliqué: '{txt}'",
+                                "screenshot": await page.screenshot(full_page=True),
+                                "url": page.url,
+                                "html": snap_html,
+                                "ai_patterns": cached_patterns.get(current_url, {}),
+                                "scripts": await self._capture_page_scripts(page),
+                            })
+                            break
+                    except Exception:
+                        continue
             except Exception as e:
-                logger.warning(f"Fast Track check failed: {e}")
+                logger.warning(f"Fast-track error: {e}")
 
-            # 2. AI Pattern Detection at each step
-            logger.info("🤖 AI: Analyzing current page for phishing patterns...")
-            patterns = self.llm.detect_phishing_patterns(content, current_url)
-            
+            if clicked_fast:
+                continue  # re-evaluate the new page
+
+            # ── 6. LLM Pattern Detection (cached per URL) ─────────────────
+            if current_url != last_analyzed_url:
+                logger.info("🤖 AI: Analyzing new page for phishing patterns…")
+                patterns = self.llm.detect_phishing_patterns(content, current_url)
+                cached_patterns[current_url] = patterns
+                last_analyzed_url = current_url
+            else:
+                patterns = cached_patterns.get(current_url, {})
+                logger.info("🤖 AI: Reusing cached analysis (same URL).")
+
             if patterns.get("is_final_payload_page") or patterns.get("recommendation") == "stop_reached_payload":
                 journey_log.append({
                     "step": f"step_{i:02d}_suspicious",
-                    "description": f"[SUSPICIOUS PAGE] {patterns.get('detected_patterns', [])}",
+                    "description": f"[PAGE SUSPECTE] {patterns.get('detected_patterns', [])}",
                     "screenshot": await page.screenshot(full_page=True),
                     "url": current_url,
                     "html": content,
-                    "ai_patterns": patterns
+                    "ai_patterns": patterns,
+                    "scripts": await self._capture_page_scripts(page),
                 })
                 if form_was_filled:
-                    logger.info("🎯 Final payload page detected after form submission — stopping exploration.")
+                    logger.info("🎯 Payload final atteint après soumission — arrêt.")
                     break
-                else:
-                    logger.info("🎯 AI detected Suspicious Page — continuing to go deeper...")
+                logger.info("🎯 Page suspecte détectée — on continue pour aller plus loin…")
 
-            # 3. Gather interactive elements
+            # ── 7. Gather interactive candidates ─────────────────────────
             candidates = []
             try:
                 candidates = await page.evaluate(r"""
                 () => {
-                    // Helper to get text content clean
-                    const getText = (el) => (el.innerText || el.textContent || "").trim();
-                    
-                    // Specific strategy for "Commencer" / "Start" buttons that might be divs or spans
-                    const allUrlElements = Array.from(document.querySelectorAll('*'));
-                    const keywords = ["commencer", "start", "sondage", "survey", "continuer", "continue", "répondre", "answer", "participer", "participate"];
-                    
-                    const textMatches = allUrlElements.filter(el => {
-                        const txt = getText(el).toLowerCase();
-                        // Element must have one of the keywords as its MAIN text (short length)
-                        if (txt.length > 0 && txt.length < 30 && keywords.some(k => txt.includes(k))) {
-                             // Must be visible and leaf or close to leaf (no big containers)
-                             if (el.children.length < 3) return true;
-                        }
-                        return false;
+                    const getText = el => (el.innerText || el.textContent || '').trim();
+                    const nav_kw  = ['commencer','continuer','suivant','suite','valider',
+                                     'start','continue','next','proceed','submit','réclamer','claim',
+                                     'accepter','accept','sondage','survey','répondre'];
+                    // All clickable/text elements
+                    const base = Array.from(document.querySelectorAll(
+                        'button, a, input[type="submit"], input[type="button"], ' +
+                        'div[role="button"], span[role="button"], [onclick], ' +
+                        'div[class*="btn"], span[class*="btn"], label[class*="btn"]'
+                    ));
+                    // Also catch plain text-matching elements (phishing pages use divs as buttons)
+                    const extras = Array.from(document.querySelectorAll('*')).filter(el => {
+                        const t = getText(el).toLowerCase();
+                        return t.length > 0 && t.length < 60 &&
+                               nav_kw.some(k => t.includes(k)) &&
+                               el.children.length < 4;
                     });
-
-                    const standardItems = Array.from(document.querySelectorAll('button, a, input[type="submit"], div[role="button"], span[class*="btn"], [onclick]'));
-                    
-                    // Combine and dedupe
-                    const combined = [...new Set([...standardItems, ...textMatches])];
-
+                    const combined = [...new Set([...base, ...extras])];
                     return combined.map(el => {
-                        const rect = el.getBoundingClientRect();
+                        const r = el.getBoundingClientRect();
+                        const style = window.getComputedStyle(el);
+                        const inViewport = r.top < window.innerHeight + 800; // also below fold
                         return {
-                            tagName: el.tagName.toLowerCase(),
-                            text: getText(el),
-                            href: el.href || '',
-                            visible: (rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden'),
-                            role: el.getAttribute('role'),
-                            className: el.className || '',
-                            id: el.id || '',
-                            outerHTML: el.outerHTML.slice(0, 300)
+                            tagName:   el.tagName.toLowerCase(),
+                            text:      getText(el).slice(0, 120),
+                            href:      el.href || '',
+                            visible:   r.width > 0 && r.height > 0 &&
+                                       style.visibility !== 'hidden' &&
+                                       style.display !== 'none',
+                            inViewport: inViewport,
+                            role:      el.getAttribute('role') || '',
+                            className: (el.className || '').toString().slice(0, 100),
+                            id:        el.id || '',
+                            outerHTML: el.outerHTML.slice(0, 300),
                         };
-                    }).filter(item => item.visible && item.text.length > 0);
+                    }).filter(it => it.visible && it.text.length > 0);
                 }
                 """)
+            except Exception as e:
+                logger.warning(f"JS candidates eval failed: {e}")
 
-            except Exception as e: logger.warning(f"JS Eval failed: {e}")
-
-            # 3b. PROACTIVE: Fill Forms before clicking
+            # ── 8. Form fill ──────────────────────────────────────────────
             filled_actions = await self._fill_page_inputs(page)
             if filled_actions:
                 form_was_filled = True
-                desc = f"Form Auto-Fill: {', '.join(filled_actions)}"
-                logger.info(f"📝 {desc}")
-                # If we filled forms, we likely want to submit.
-                # We don't break yet, we let the click logic find the submit button.
+                logger.info(f"📝 Form filled: {', '.join(filled_actions)}")
 
-            # 4. AI-Powered Element Analysis (Proactive)
+            # ── 9. Hybrid scoring (30% heuristic + 70% AI) ───────────────
             ai_ranked_elements = []
-            if candidates and stagnation_count < 5:
-                logger.info(f"🤖 AI: Analyzing {len(candidates)} interactive elements...")
+            ai_scores_map: dict = {}
+            if candidates and stagnation_count < 4:
+                logger.info(f"🤖 Scoring {len(candidates)} elements…")
                 ai_ranked_elements = self.llm.analyze_interactive_elements(candidates, current_url)
-                
-                # Build a lookup for AI scores
-                ai_scores_map = {}
                 for el in ai_ranked_elements:
                     if isinstance(el, dict):
-                        key = el.get('text', '')
-                        ai_scores_map[key] = {
-                            'score': el.get('phishing_score', 50),
-                            'reason': el.get('ai_reason', '')
+                        ai_scores_map[el.get("text", "")] = {
+                            "score": el.get("phishing_score", 50),
+                            "reason": el.get("ai_reason", ""),
                         }
-            
-            # 5. Hybrid Scoring: 30% Heuristic + 70% AI
+
             elements_to_try = []
             for c in candidates:
-                heuristic_score = 10  # Base fallback score
-                txt = c['text'].lower()
-                
-                # Heuristic scoring (exclusive tiers)
+                h_score = 10
+                txt = c["text"].lower()
                 if any(k in txt for k in priority_keywords):
-                    heuristic_score = 150  # Boosted priority
+                    h_score = 180
                 elif any(k in txt for k in nav_keywords):
-                    heuristic_score = 100
-                
-                # Super Boost for "Commencer" / "Start" specifically
+                    h_score = 120
                 if "commencer" in txt or "start" in txt:
-                    heuristic_score += 200
+                    h_score += 200
+                if "continuer" in txt or "continue" in txt or "suivant" in txt or "next" in txt:
+                    h_score += 180
+                if filled_actions and any(k in txt for k in ("submit","valider","login","connect","envoyer")):
+                    h_score += 150
+                # Boost buttons in viewport
+                if c.get("inViewport"):
+                    h_score += 30
 
-                # Boost "Login" / "Submit" if we just filled a form
-                if filled_actions and ("login" in txt or "connect" in txt or "submit" in txt or "valider" in txt):
-                    heuristic_score += 150
-                
-                # AI scoring
-                ai_data = ai_scores_map.get(c['text'], {'score': 50, 'reason': ''}) if ai_ranked_elements else {'score': 50, 'reason': ''}
-                ai_score = ai_data['score']
-                
-                # Hybrid: 30% heuristic + 70% AI
-                final_score = (heuristic_score * 0.3) + (ai_score * 0.7)
-                
-                # Penalize already clicked
-                c_hash = hashlib.md5((c['text'] + c['outerHTML']).encode('utf-8')).hexdigest()
-                if c_hash in clicked_hashes: final_score -= 200
-                
-                # Penalize repeated URL links
-                if c['href'] and c['href'] == current_url: final_score -= 50
-                if c['href'] and any(step['url'] == c['href'] for step in journey_log): final_score -= 20
+                ai_d = ai_scores_map.get(c["text"], {"score": 50, "reason": ""})
+                final_score = h_score * 0.3 + ai_d["score"] * 0.7
+
+                c_hash = hashlib.md5((c["text"] + c["outerHTML"]).encode("utf-8")).hexdigest()
+                if c_hash in clicked_hashes:
+                    final_score -= 300
+                if c["href"] and c["href"] == current_url:
+                    final_score -= 50
+                if c["href"] and any(s["url"] == c["href"] for s in journey_log):
+                    final_score -= 20
 
                 if final_score > 0:
                     elements_to_try.append({
-                        'score': final_score,
-                        'candidate': c,
-                        'hash': c_hash,
-                        'ai_reason': ai_data['reason']
+                        "score": final_score, "candidate": c,
+                        "hash": c_hash, "ai_reason": ai_d["reason"],
                     })
-            
-            elements_to_try.sort(key=lambda x: x['score'], reverse=True)
-            
-            # Log top candidates
-            if elements_to_try:
-                top_3 = elements_to_try[:3]
-                logger.info(f"🤖 AI Top Candidates: {[(e['candidate']['text'][:30], round(e['score'])) for e in top_3]}")
 
-            # 6. Action Logic
+            elements_to_try.sort(key=lambda x: x["score"], reverse=True)
+            if elements_to_try:
+                logger.info(f"Top-3: {[(e['candidate']['text'][:30], round(e['score'])) for e in elements_to_try[:3]]}")
+
+            # ── 10. Click best candidate ──────────────────────────────────
             clicked = False
             desc = ""
-            ai_reason = ""
-            
-            # Try top ranked from hybrid scoring
-            for elem_data in elements_to_try:
-                cand = elem_data['candidate']
-                c_hash = elem_data['hash']
-                ai_reason = elem_data.get('ai_reason', '')
-                score = elem_data['score']
-                
-                try:
-                    # Construct robust selector
-                    if cand['text']:
-                        selector = f"text={cand['text']}"
-                    else:
-                        continue
-                    
-                    if await page.is_visible(selector):
-                        logger.info(f"🤖 Interaction: Clicking '{cand['text']}' (Score: {score:.0f}, AI: {ai_reason[:50]})")
-                        await page.click(selector, timeout=2000)
-                        clicked = True
-                        clicked_hashes.add(c_hash)
-                        desc = f"Clicked '{cand['text']}' (AI: {ai_reason[:40]})"
-                        break
-                except: continue
-                
-            # Fallback: Stagnation → Scroll + Tab to reveal hidden elements
-            if not clicked and stagnation_count >= 2:
-                logger.info(f"⏬ Stagnation detected ({stagnation_count}x) — trying scroll + Tab to reveal elements...")
-                try:
-                    await page.mouse.wheel(0, random.randint(300, 600))
-                    await asyncio.sleep(1.0)
-                    await page.keyboard.press("Tab")
-                    await asyncio.sleep(0.5)
-                    # Try pressing Enter on the focused element (may be a button)
-                    await page.keyboard.press("Enter")
-                    await asyncio.sleep(1.5)
-                    logger.info("⏬ Scroll+Tab done — re-evaluating page on next iteration.")
-                    continue
-                except Exception as e:
-                    logger.debug(f"Scroll+Tab strategy failed: {e}")
 
-            # Fallback: AI Direct Suggestion (if hybrid fails)
+            for elem_data in elements_to_try:
+                cand = elem_data["candidate"]
+                c_hash = elem_data["hash"]
+                score = elem_data["score"]
+                label = cand["text"][:60]
+                try:
+                    # Use Playwright locator (handles special chars like ">") + scroll
+                    loc = page.locator(
+                        f"{cand['tagName'] or '*'}[id='{cand['id']}']"
+                        if cand["id"]
+                        else f"{cand['tagName'] or '*'}"
+                    ).filter(has_text=re.compile(re.escape(cand["text"][:40]), re.IGNORECASE)).first
+                    if await loc.count() == 0:
+                        # Fallback: any element with matching text
+                        loc = page.get_by_text(cand["text"][:40], exact=False).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        logger.info(f"🖱️  Clicking '{label}' (score {score:.0f})")
+                        if await self._click_locator(loc, label):
+                            clicked = True
+                            clicked_hashes.add(c_hash)
+                            desc = f"Cliqué '{label}' (score {score:.0f})"
+                            break
+                except Exception:
+                    continue
+
+            # ── 11. Stagnation recovery strategies ───────────────────────
+            if not clicked and stagnation_count >= 2:
+                logger.info(f"⏬ Stagnation ×{stagnation_count} — scroll to bottom + re-eval…")
+                try:
+                    # Scroll to bottom to reveal lazy-loaded buttons
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(1.2)
+                    # Also try pressing Tab then Enter
+                    await page.keyboard.press("Tab")
+                    await asyncio.sleep(0.4)
+                    await page.keyboard.press("Enter")
+                    await asyncio.sleep(1.2)
+                except Exception:
+                    pass
+                continue  # re-collect candidates after scroll
+
             if not clicked and stagnation_count >= 3:
-                logger.info("🤖 Heuristics exhausted. Asking AI for direct guidance...")
+                logger.info("🤖 Asking AI for direct selector guidance…")
                 try:
                     ai_decision = self.llm.get_next_action(content, current_url)
                     ai_selector = ai_decision.get("selector")
-                    ai_reason = ai_decision.get("reason", "Unknown")
-                    ai_confidence = ai_decision.get("confidence", 0)
-                    
-                    if ai_selector and ai_confidence > 50:
-                        logger.info(f"🤖 AI Direct: '{ai_selector}' (Confidence: {ai_confidence}%) - {ai_reason}")
-                        if await page.is_visible(ai_selector):
-                            await page.click(ai_selector, timeout=3000)
-                            clicked = True
-                            desc = f"AI Clicked '{ai_selector}' ({ai_reason})"
+                    ai_conf = ai_decision.get("confidence", 0)
+                    if ai_selector and ai_conf > 40:
+                        loc = page.locator(ai_selector).first
+                        if await loc.count() > 0:
+                            if await self._click_locator(loc, ai_selector):
+                                clicked = True
+                                desc = f"AI direct: '{ai_selector}'"
                 except Exception as e:
-                    logger.error(f"AI Direct Interaction failed: {e}")
+                    logger.error(f"AI direct action failed: {e}")
 
-            # Fallback: Generic visible button
+            # Last resort: brute-force first visible unclicked button
             if not clicked:
-                try:
-                    generic_selectors = ["button", "a", "div[role='button']", ".btn", "input[type='submit']"]
-                    for sel in generic_selectors:
+                brute_sels = ["button", "a", "div[role='button']", ".btn", "input[type='submit']"]
+                for sel in brute_sels:
+                    try:
                         count = await page.locator(sel).count()
-                        for idx in range(min(count, 10)):    
+                        for idx in range(min(count, 15)):
                             el = page.locator(sel).nth(idx)
-                            if await el.is_visible():
-                                txt = await el.text_content()
-                                txt = txt.strip() if txt else "unknown"
-                                c_hash = hashlib.md5((txt + sel + str(idx)).encode('utf-8')).hexdigest()
-                                
-                                if c_hash not in clicked_hashes:
-                                    logger.info(f"Fallback Interaction: Clicking generic {sel} [{txt}]")
-                                    await el.click(timeout=1000)
-                                    clicked = True
-                                    clicked_hashes.add(c_hash)
-                                    desc = f"Clicked generic {sel}: '{txt}'"
-                                    break
-                        if clicked: break
-                except: 
-                    pass
+                            if not await el.is_visible():
+                                continue
+                            txt = (await el.text_content() or "").strip()
+                            c_hash = hashlib.md5((txt + sel + str(idx)).encode("utf-8")).hexdigest()
+                            if c_hash in clicked_hashes:
+                                continue
+                            logger.info(f"🔨 Brute-force: {sel}[{idx}] '{txt}'")
+                            if await self._click_locator(el, txt):
+                                clicked = True
+                                clicked_hashes.add(c_hash)
+                                desc = f"Brute-force: '{txt}'"
+                                break
+                        if clicked:
+                            break
+                    except Exception:
+                        continue
 
-            # 7. Wait and Log
+            # ── 12. Post-click logging ────────────────────────────────────
             if clicked:
-                try: await page.wait_for_load_state("networkidle", timeout=5000)
-                except: await asyncio.sleep(2)
-                
-                screenshot = await page.screenshot(full_page=True)
-                
-                # Check for Payment Form (High Value)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=6000)
+                except Exception:
+                    await asyncio.sleep(2)
+
+                # Payment form detection (Stripe, card fields, PayPal, etc.)
                 pay_found = False
                 try:
-                    if await page.locator("input[name*='card']").count() > 0 or await page.locator("#cc_number").count() > 0:
-                        pay_found = True
-                        desc += " [PAYMENT DETECTED]"
-                except: pass
+                    pay_sels = [
+                        "input[name*='card']", "input[name*='carte']",
+                        "input[id*='card']",   "#cc_number",
+                        "input[placeholder*='1234']", "[data-stripe]",
+                        "iframe[name*='stripe']", "iframe[src*='paypal']",
+                    ]
+                    for ps in pay_sels:
+                        if await page.locator(ps).count() > 0:
+                            pay_found = True
+                            desc += " [💳 PAIEMENT DÉTECTÉ]"
+                            break
+                except Exception:
+                    pass
 
-                try: html_snap = await page.content()
-                except: html_snap = ""
+                try:
+                    html_snap = await page.content()
+                except Exception:
+                    html_snap = ""
 
                 journey_log.append({
                     "step": f"step_{i:02d}",
                     "description": desc,
-                    "screenshot": screenshot,
+                    "screenshot": await page.screenshot(full_page=True),
                     "url": page.url,
                     "html": html_snap,
-                    "ai_patterns": patterns
+                    "ai_patterns": patterns,
+                    "scripts": await self._capture_page_scripts(page),
                 })
-                
+
                 if pay_found:
-                    logger.info("💰 Payment Form Identified - Stopping Exploration")
+                    logger.info("💳 Formulaire de paiement détecté — arrêt de l'exploration.")
                     break
             else:
-                logger.info("No actionable elements found. Journey ends.")
+                logger.info("Aucun élément actionnable trouvé — fin du parcours.")
                 break
-                
-        print(f"DEBUG_CRITICAL: smart_interact returning {len(journey_log)} steps.")
+
+        logger.info(f"smart_interact: {len(journey_log)} étapes capturées.")
         return journey_log
 
     async def analyze_url(self, url: str):
